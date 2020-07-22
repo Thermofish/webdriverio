@@ -1,18 +1,32 @@
-import request from 'request'
+import got from 'got'
 import { remote } from '../../../src'
 
-describe('isEnabled test', () => {
-    it('should allow to check if an element is enabled', async () => {
-        const browser = await remote({
+jest.useFakeTimers()
+
+describe('pause test', () => {
+    let browser
+    beforeEach(async () => {
+        browser = await remote({
             baseUrl: 'http://foobar.com',
             capabilities: {
                 browserName: 'foobar'
             }
         })
+    })
 
-        const start = Date.now()
-        await browser.pause(1000)
-        expect((Date.now() - start) > 990).toBe(true)
-        expect(request.mock.calls).toHaveLength(1)
+    it('should pause for value provided as arg', async () => {
+        browser.pause(500) // expect 500ms pause
+        expect(setTimeout)
+            .toHaveBeenLastCalledWith(expect.any(Function), 500)
+    })
+
+    it('should pause for default value', async () => {
+        browser.pause() // expect 1s pause
+        expect(setTimeout)
+            .toHaveBeenLastCalledWith(expect.any(Function), 1000)
+    })
+
+    afterEach(() => {
+        got.mockClear()
     })
 })

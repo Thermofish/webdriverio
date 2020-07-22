@@ -26,6 +26,11 @@ module.exports = function (docfile) {
     for (const tag of javadoc.tags) {
         if (tag.type == 'param') {
             tag.joinedTypes = tag.types.join('|').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+            if (tag.typesDescription.includes('|<code>undefined</code>')) {
+                tag.typesDescription = `<code>${tag.joinedTypes}</code>`
+            }
+
             paramTags.push(tag)
             paramStr.push(tag.name)
         } else if (tag.type == 'property') {
@@ -138,9 +143,27 @@ module.exports = function (docfile) {
         description = description.substr(0, description.indexOf('<example>'))
     }
 
+    /**
+     * format param strings, from
+     * ```
+     * browser.waitUntil(condition, options, options.timeout, options.reverse, options.timeoutMsg, options.interval)
+     * ```
+     * to
+     * ```
+     * browser.waitUntil(condition, { timeout, reverse, timeoutMsg, interval })
+     * ```
+     */
+    const parsedParamStr = paramStr
+        .filter((param, i) => !paramStr[i + 1] || paramStr[i + 1].split('.')[0] !== param)
+        .filter((param) => !param.includes('.'))
+    const paramOptions = paramStr.filter((param) => param.includes('.')).map((param) => param.split('.')[1])
+    if (paramOptions.length) {
+        parsedParamStr.push(`{ ${paramOptions.join(', ')} }`)
+    }
+
     const commandDescription = {
         command: name,
-        paramString: paramStr.join(', '),
+        paramString: parsedParamStr.join(', '),
         paramTags: paramTags,
         propertyTags: propertyTags,
         returnTags: returnTags,
@@ -166,6 +189,8 @@ module.exports = function (docfile) {
         hasDocusaurusHeader: true,
         originalId: `api/${scope}/${name}`,
         isElementScope : scope === 'element',
+        isNetworkScope : scope === 'network',
+        isMockScope : scope === 'mock'
     }
 
     return commandDescription

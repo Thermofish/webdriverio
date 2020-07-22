@@ -2,8 +2,7 @@ const DEFAULT_TIMEOUT = 10000
 
 /* istanbul ignore next */
 
-export const DEFAULT_CONFIGS = {
-    sync: true,
+export const DEFAULT_CONFIGS = () => ({
     specs: [],
     suites: {},
     exclude: [],
@@ -11,18 +10,17 @@ export const DEFAULT_CONFIGS = {
     logLevel: 'info',
     logLevels: {},
     excludeDriverLogs: [],
-    baseUrl: undefined,
     bail: 0,
     waitforInterval: 500,
     waitforTimeout: 5000,
     framework: 'mocha',
     reporters: [],
+    services: [],
     maxInstances: 100,
     maxInstancesPerCapability: 100,
     filesToWatch: [],
-    connectionRetryTimeout: 90000,
+    connectionRetryTimeout: 120000,
     connectionRetryCount: 3,
-    debug: false,
     execArgv: [],
     runnerEnv: {},
     runner: 'local',
@@ -44,6 +42,7 @@ export const DEFAULT_CONFIGS = {
      * hooks
      */
     onPrepare: [],
+    onWorkerStart: [],
     before: [],
     beforeSession: [],
     beforeSuite: [],
@@ -65,14 +64,18 @@ export const DEFAULT_CONFIGS = {
     beforeFeature: [],
     beforeScenario: [],
     beforeStep: [],
-    afterFeature: [],
+    afterStep: [],
     afterScenario: [],
-    afterStep: []
-}
+    afterFeature: [],
+})
 
 export const SUPPORTED_HOOKS = [
     'before', 'beforeSession', 'beforeSuite', 'beforeHook', 'beforeTest', 'beforeCommand',
     'afterCommand', 'afterTest', 'afterHook', 'afterSuite', 'afterSession', 'after',
-    'beforeFeature', 'beforeScenario', 'beforeStep', 'afterFeature',
-    'afterScenario', 'afterStep', 'onReload', 'onPrepare', 'onComplete'
+    'beforeFeature', 'beforeScenario', 'beforeStep', 'afterStep', 'afterScenario', 'afterFeature',
+    'onReload', 'onPrepare', 'onWorkerStart', 'onComplete'
+]
+
+export const SUPPORTED_FILE_EXTENSIONS = [
+    '.js', '.mjs', '.es6', '.ts', '.feature', '.coffee', '.cjs'
 ]

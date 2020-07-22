@@ -28,6 +28,8 @@ const frame = {
     url: 'http://foobar.com'
 }
 
+jest.useFakeTimers()
+
 beforeEach(() => {
     driverMock.getCDPSession.mockClear()
     driverMock.getActivePage.mockClear()
@@ -91,6 +93,7 @@ test('onFrameNavigated', () => {
     expect(traceGatherer.frameId).toBe(undefined)
     expect(traceGatherer.loaderId).toBe(undefined)
     expect(traceGatherer.pageUrl).toBe(undefined)
+    traceGatherer.traceStart = Date.now()
 
     traceGatherer.onFrameNavigated({ frame })
     expect(traceGatherer.emit).toBeCalledWith('tracingStarted', 123)
@@ -118,13 +121,27 @@ test('onFrameNavigated: should not start if url is not supported', () => {
     expect(traceGatherer.emit).toHaveBeenCalledTimes(0)
 })
 
-test('onFrameNavigated: should cancel trace if page load failed', () => {
+test('onFrameNavigated: should not start if tracing is not started', () => {
+    traceGatherer.traceStart = undefined
     traceGatherer.finishTracing = jest.fn()
     traceGatherer.failingFrameLoadIds.push(123)
     traceGatherer.waitForNetworkIdleEvent = { cancel: jest.fn() }
     traceGatherer.waitForCPUIdleEvent = { cancel: jest.fn() }
     traceGatherer.onFrameNavigated({ frame })
     expect(traceGatherer.emit).toHaveBeenCalledTimes(0)
+    expect(traceGatherer.finishTracing).toHaveBeenCalledTimes(0)
+    expect(traceGatherer.waitForNetworkIdleEvent.cancel).toHaveBeenCalledTimes(0)
+    expect(traceGatherer.waitForCPUIdleEvent.cancel).toHaveBeenCalledTimes(0)
+})
+
+test('onFrameNavigated: should cancel trace if page load failed', () => {
+    traceGatherer.traceStart = Date.now()
+    traceGatherer.finishTracing = jest.fn()
+    traceGatherer.failingFrameLoadIds.push(123)
+    traceGatherer.waitForNetworkIdleEvent = { cancel: jest.fn() }
+    traceGatherer.waitForCPUIdleEvent = { cancel: jest.fn() }
+    traceGatherer.onFrameNavigated({ frame })
+    expect(traceGatherer.emit).toHaveBeenCalledWith('tracingError', expect.any(Error))
     expect(traceGatherer.finishTracing).toHaveBeenCalledTimes(1)
     expect(traceGatherer.waitForNetworkIdleEvent.cancel).toHaveBeenCalledTimes(1)
     expect(traceGatherer.waitForCPUIdleEvent.cancel).toHaveBeenCalledTimes(1)
@@ -132,6 +149,7 @@ test('onFrameNavigated: should cancel trace if page load failed', () => {
 
 test('onFrameNavigated: can detect page load', () => {
     traceGatherer.clickTraceTimeout = true
+    traceGatherer.traceStart = Date.now()
 
     expect(traceGatherer.pageLoadDetected).toBe(false)
     traceGatherer.onFrameNavigated({ frame })
@@ -156,8 +174,9 @@ test('startTracing: registers timeout for click events', async () => {
     traceGatherer.finishTracing = jest.fn()
 
     await traceGatherer.startTracing('click event')
-    await new Promise((resolve) => setTimeout(resolve, FRAME_LOAD_START_TIMEOUT + 10))
+    jest.advanceTimersByTime(FRAME_LOAD_START_TIMEOUT + 10)
     expect(pageMock.tracing.stop).toHaveBeenCalledTimes(1)
+    await new Promise((resolve) => process.nextTick(resolve))
     expect(traceGatherer.finishTracing).toHaveBeenCalledTimes(1)
 })
 
@@ -173,26 +192,30 @@ test('completeTracing: in failure case', async () => {
     pageMock.tracing.stop.mockReturnValue(Promise.reject(new Error('boom')))
     await traceGatherer.completeTracing()
     expect(traceGatherer.finishTracing).toHaveBeenCalledTimes(1)
-    expect(traceGatherer.emit).toHaveBeenCalledTimes(0)
+    expect(traceGatherer.emit).toBeCalledWith('tracingError', expect.any(Error))
 })
 
 test('onLoadEventFired', async () => {
     await traceGatherer.onLoadEventFired()
-    traceGatherer.traceStart = Date.now() - 20000
+    traceGatherer.traceStart = Date.now()
     traceGatherer.completeTracing = jest.fn().mockReturnValue(Promise.resolve('yeahh'))
 
     traceGatherer.waitForNetworkIdleEvent = {
-        promise: new Promise((resolve) => setTimeout(resolve, 50)),
+        promise: new Promise((resolve) => {
+            jest.advanceTimersByTime(50)
+            resolve()
+        }),
         cancel: jest.fn()
     }
     traceGatherer.waitForCPUIdleEvent = {
-        promise: new Promise((resolve) => setTimeout(resolve, 100)),
+        promise: new Promise((resolve) => {
+            jest.advanceTimersByTime(100)
+            resolve()
+        }),
         cancel: jest.fn()
     }
-    traceGatherer.waitForMaxTimeout = jest.fn().mockReturnValue(new Promise(
-        (resolve) => setTimeout(resolve, 150)
-    ))
 
+    process.nextTick(() => jest.advanceTimersByTime(10000))
     await traceGatherer.onLoadEventFired()
     expect(traceGatherer.waitForNetworkIdleEvent.cancel).toHaveBeenCalledTimes(1)
     expect(traceGatherer.waitForCPUIdleEvent.cancel).toHaveBeenCalledTimes(1)
@@ -203,29 +226,34 @@ test('onLoadEventFired: using min trace time', async () => {
     traceGatherer.traceStart = Date.now() - 9700
     traceGatherer.completeTracing = jest.fn().mockReturnValue(Promise.resolve('yeahh'))
 
+    const doneCb = jest.fn()
     traceGatherer.waitForNetworkIdleEvent = {
-        promise: new Promise((resolve) => setTimeout(resolve, 50)),
+        promise: new Promise((resolve) => {
+            jest.advanceTimersByTime(50)
+            resolve()
+        }),
         cancel: jest.fn()
     }
     traceGatherer.waitForCPUIdleEvent = {
-        promise: new Promise((resolve) => setTimeout(resolve, 100)),
+        promise: new Promise((resolve) => {
+            jest.advanceTimersByTime(10)
+            resolve()
+        }),
         cancel: jest.fn()
     }
-    traceGatherer.waitForMaxTimeout = jest.fn().mockReturnValue(new Promise(
-        (resolve) => setTimeout(resolve, 150)
-    ))
+    traceGatherer.waitForMaxTimeout = jest.fn().mockReturnValue(new Promise((resolve) => {
+        jest.advanceTimersByTime(150)
+        resolve(doneCb)
+    }))
 
-    const start = Date.now()
     await traceGatherer.onLoadEventFired()
-    expect(Date.now() - start).toBeGreaterThanOrEqual(299)
+    expect(doneCb).toBeCalledTimes(1)
 })
 
 test('waitForMaxTimeout', async () => {
-    const start = Date.now()
     traceGatherer.completeTracing = jest.fn()
+    process.nextTick(() => jest.advanceTimersByTime(200))
     const done = await traceGatherer.waitForMaxTimeout(200)
     done()
-
-    expect(Date.now() - start).toBeGreaterThan(199)
     expect(traceGatherer.completeTracing).toHaveBeenCalledTimes(1)
 })

@@ -1,31 +1,56 @@
 import CrossBrowserTestingService from '../src/service'
-import request from 'request'
+import got from 'got'
 
-jest.mock('request', () => ({
-    put: jest.fn(),
-    get: jest.fn()
-}))
+got.put.mockReturnValue(Promise.resolve({ body: '{}' }))
+
+const uri = 'some/uri'
+const featureObject = {
+    type: 'gherkin-document',
+    uri: '__tests__/features/passed.feature',
+    document:
+        {
+            type: 'GherkinDocument',
+            feature:
+                {
+                    type: 'Feature',
+                    tags: ['tag'],
+                    location: ['Object'],
+                    language: 'en',
+                    keyword: 'Feature',
+                    name: 'Create a feature',
+                    description: '    the description',
+                    children: [''],
+                },
+            comments: []
+        }
+}
 
 describe('wdio-crossbrowsertesting-service', () => {
     const execute = jest.fn()
-    global.browser = {
-        execute,
-        sessionId: 'globalSessionId',
-        requestHandler: {
-            auth: {
-                user: 'test',
-                pass: 'testy'
-            }
-        },
-        chromeA: { sessionId: 'sessionChromeA' },
-        chromeB: { sessionId: 'sessionChromeB' },
-        chromeC: { sessionId: 'sessionChromeC' },
-        instances: ['chromeA', 'chromeB', 'chromeC'],
-    }
+
+    beforeEach(() => {
+        global.browser = {
+            execute,
+            sessionId: 'globalSessionId',
+            requestHandler: {
+                auth: {
+                    user: 'test',
+                    pass: 'testy'
+                }
+            },
+            config: {},
+            chromeA: { sessionId: 'sessionChromeA' },
+            chromeB: { sessionId: 'sessionChromeB' },
+            chromeC: { sessionId: 'sessionChromeC' },
+            instances: ['chromeA', 'chromeB', 'chromeC'],
+            isMultiremote: false
+        }
+    })
 
     afterEach(() => {
-        global.browser.isMultiremote = false
+        delete global.browser
         execute.mockReset()
+        got.put.mockClear()
     })
 
     it('before', () => {
@@ -66,8 +91,6 @@ describe('wdio-crossbrowsertesting-service', () => {
         cbtService.cbtAuthkey = undefined
         cbtService.suiteTitle = 'Test suite'
         cbtService.beforeTest(test)
-
-        expect(execute).not.toBeCalled()
         expect(cbtService.suiteTitle).toEqual('Test suite')
     })
 
@@ -86,7 +109,6 @@ describe('wdio-crossbrowsertesting-service', () => {
         cbtService.beforeSuite({ title: 'Test suite' })
         cbtService.beforeTest(test)
 
-        expect(execute).toBeCalledWith('cbt:test-context=Test parent - Test title')
         expect(cbtService.suiteTitle).toEqual('Test suite')
     })
 
@@ -106,7 +128,6 @@ describe('wdio-crossbrowsertesting-service', () => {
         cbtService.beforeSuite({ title: 'Jasmine__TopLevel__Suite' })
         cbtService.beforeTest(test)
 
-        expect(execute).toBeCalledWith('cbt:test-context=Test parent - Test title')
         expect(cbtService.suiteTitle).toEqual('Test ')
     })
 
@@ -128,8 +149,7 @@ describe('wdio-crossbrowsertesting-service', () => {
         const cbtService = new CrossBrowserTestingService()
         cbtService.failures = 0
 
-        cbtService.afterTest({ passed: true })
-
+        cbtService.afterTest({}, {}, { passed: true })
         expect(cbtService.failures).toEqual(0)
     })
 
@@ -137,114 +157,59 @@ describe('wdio-crossbrowsertesting-service', () => {
         const cbtService = new CrossBrowserTestingService()
         cbtService.failures = 0
 
-        cbtService.afterTest({ passed: false })
+        cbtService.afterTest({}, {}, { passed: false })
 
         expect(cbtService.failures).toEqual(1)
     })
 
     it('beforeFeature: execute not called', () => {
         const cbtService = new CrossBrowserTestingService()
-        const feature = {
-            name: 'Feature name',
-            getName: () => 'Feature name'
-        }
-        cbtService.beforeFeature(feature)
-
-        expect(execute).not.toBeCalled()
+        cbtService.beforeFeature(uri, featureObject)
     })
 
     it('beforeFeature: execute called', () => {
         const cbtService = new CrossBrowserTestingService()
-        const feature = {
-            name: 'Feature name',
-            getName: () => 'Feature name'
-        }
         cbtService.beforeSession({
             user: 'test',
             key: 'testy'
         }, {})
-        cbtService.beforeFeature(feature)
+        cbtService.beforeFeature(uri, featureObject)
 
-        expect(cbtService.suiteTitle).toEqual('Feature name')
-        expect(execute).toBeCalledWith('cbt:test-context=Feature: Feature name')
+        expect(cbtService.suiteTitle).toEqual('Create a feature')
     })
 
-    it('afterStep: exception happened', () => {
+    it('afterScenario: exception happened', () => {
         const cbtService = new CrossBrowserTestingService()
         cbtService.failures = 0
-        const feature = {
-            failureException: 'Unhandled error!'
-        }
-        cbtService.afterStep(feature)
 
-        expect(cbtService.failures).toEqual(1)
+        expect(cbtService.failures).toBe(0)
+
+        cbtService.afterScenario(uri, {}, {}, { status: 'passed' })
+        expect(cbtService.failures).toBe(0)
+
+        cbtService.afterScenario(uri, {}, {}, { status: 'failed' })
+        expect(cbtService.failures).toBe(1)
+
+        cbtService.afterScenario(uri, {}, {}, { status: 'passed' })
+        expect(cbtService.failures).toBe(1)
+
+        cbtService.afterScenario(uri, {}, {}, { status: 'failed' })
+        expect(cbtService.failures).toBe(2)
     })
 
-    it('afterStep: getFailureException func exists', () => {
-        const cbtService = new CrossBrowserTestingService()
-        cbtService.failures = 0
-        const feature = {
-            getFailureException: () => 'Unhandled error!'
-        }
-        cbtService.afterStep(feature)
-
-        expect(cbtService.failures).toEqual(1)
-    })
-
-    it('afterStep: cucumber failure', () => {
-        const cbtService = new CrossBrowserTestingService()
-        cbtService.failures = 0
-        const feature = {
-            status: 'failed'
-        }
-        cbtService.afterStep(feature)
-
-        expect(cbtService.failures).toEqual(1)
-    })
-
-    it('beforeScenario: execute not called', () => {
-        const cbtService = new CrossBrowserTestingService()
-        const scenario = {
-            name: 'Scenario name',
-            getName: () => 'Scenario name'
-        }
-        cbtService.beforeSession({
-            user: undefined,
-            key: undefined
-        }, {})
-        cbtService.beforeScenario(scenario)
-
-        expect(execute).not.toBeCalled()
-    })
-
-    it('beforeScenario: execute called', () => {
-        const cbtService = new CrossBrowserTestingService()
-        const scenario = {
-            name: 'Scenario name',
-            getName: () => 'Scenario name'
-        }
-        cbtService.beforeSession({
-            user: 'test',
-            key: 'testy'
-        }, {})
-        cbtService.beforeScenario(scenario)
-
-        expect(execute).toBeCalledWith('cbt:test-context=Scenario: Scenario name')
-    })
-
-    it('after: updatedJob not called', () => {
+    it('after: updatedJob not called', async () => {
         const cbtService = new CrossBrowserTestingService()
         const updateJobSpy = jest.spyOn(cbtService, 'updateJob')
         cbtService.beforeSession({
             user: undefined,
             key: undefined
         }, {})
-        cbtService.after()
+        await cbtService.after()
 
         expect(updateJobSpy).not.toBeCalled()
     })
 
-    it('after: updatedJob called with passed params', () => {
+    it('after: updatedJob called with passed params', async () => {
         const cbtService = new CrossBrowserTestingService()
         const updateJobSpy = jest.spyOn(cbtService, 'updateJob')
 
@@ -257,12 +222,12 @@ describe('wdio-crossbrowsertesting-service', () => {
         }, {})
 
         cbtService.failures = 2
-        cbtService.after()
+        await cbtService.after()
 
         expect(updateJobSpy).toBeCalledWith('test', 2)
     })
 
-    test('after: with bail set', () => {
+    test('after: with bail set', async () => {
         const cbtService = new CrossBrowserTestingService()
         cbtService.beforeSession({ user: 'test', key: 'testy' }, {})
         cbtService.failures = 5
@@ -271,12 +236,12 @@ describe('wdio-crossbrowsertesting-service', () => {
         global.browser.isMultiremote = false
         global.browser.sessionId = 'test'
         global.browser.config = { mochaOpts: { bail: 1 } }
-        cbtService.after(1)
+        await cbtService.after(1)
 
         expect(cbtService.updateJob).toBeCalledWith('test', 1)
     })
 
-    it('after: with multi-remote: updatedJob called with passed params', () => {
+    it('after: with multi-remote: updatedJob called with passed params', async () => {
         const cbtService = new CrossBrowserTestingService()
         const updateJobSpy = jest.spyOn(cbtService, 'updateJob')
         cbtService.beforeSession({
@@ -287,7 +252,7 @@ describe('wdio-crossbrowsertesting-service', () => {
         global.browser.isMultiremote = true
         global.browser.sessionId = 'sessionId'
         cbtService.failures = 2
-        cbtService.after()
+        await cbtService.after()
 
         expect(updateJobSpy).toBeCalledWith('sessionChromeA', 2, false, 'chromeA')
         expect(updateJobSpy).toBeCalledWith('sessionChromeB', 2, false, 'chromeB')
@@ -403,34 +368,28 @@ describe('wdio-crossbrowsertesting-service', () => {
     })
 
     it('updateJob success', async () => {
-        request.put.mockImplementation((url, opts, cb) => {
-            cb(null, { statusCode: 200 }, {})
-        })
-
         const service = new CrossBrowserTestingService()
         service.beforeSession({ user: 'test', key: 'testy' }, {})
         service.suiteTitle = 'my test'
 
         await service.updateJob('12345', 23, true)
-
         expect(service.failures).toBe(0)
+        expect(got.put).toHaveBeenCalled()
+        expect(got.put.mock.calls[0][1].username).toBe('test')
+        expect(got.put.mock.calls[0][1].password).toBe('testy')
     })
 
     it('updateJob failure', async () => {
-        request.put.mockImplementation((url, opts, cb) => {
-            cb(new Error('Failure'), { statusCode: 500 }, {})
-        })
+        const response = new Error('Failure')
+        response.statusCode = 500
+        got.put.mockReturnValue(Promise.reject(response))
 
         const service = new CrossBrowserTestingService()
         service.beforeSession({ user: 'test', key: 'testy' }, {})
         service.suiteTitle = 'my test'
-        try {
-            await service.updateJob('12345', 23, true)
-        } catch (e) {
-            expect(e.message).toBe('Failure')
-        }
+        const err = await service.updateJob('12345', 23, true).catch((err) => err)
+        expect(err.message).toBe('Failure')
 
         expect(service.failures).toBe(0)
     })
-
 })

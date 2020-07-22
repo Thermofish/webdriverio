@@ -20,9 +20,6 @@ export default class BaseReporter {
         this.cid = cid
         this.caps = caps
 
-        /**
-         * these configurations are not publicly documented as there should be no desire for it
-         */
         this.reporterSyncInterval = this.config.reporterSyncInterval || DEFAULT_SYNC_INTERVAL
         this.reporterSyncTimeout = this.config.reporterSyncTimeout || DEFAULT_SYNC_TIMEOUT
 
@@ -149,12 +146,12 @@ export default class BaseReporter {
          * check if reporter was passed in from a file, e.g.
          *
          * ```js
-         * const MyCustomeReporter = require('/some/path/MyCustomeReporter.js')
+         * const MyCustomReporter = require('/some/path/MyCustomReporter.js')
          * export.config = {
          *     //...
          *     reporters: [
-         *         MyCustomeReporter, // or
-         *         [MyCustomeReporter, { custom: 'option' }]
+         *         MyCustomReporter, // or
+         *         [MyCustomReporter, { custom: 'option' }]
          *     ]
          *     //...
          * }
@@ -183,7 +180,7 @@ export default class BaseReporter {
          * ```
          */
         if (typeof reporter === 'string') {
-            ReporterClass = initialisePlugin(reporter, 'reporter')
+            ReporterClass = initialisePlugin(reporter, 'reporter').default
             const customLogFile = options.setLogFile(this.cid, reporter)
             options.logFile = customLogFile || this.getLogFile(reporter)
             options.writeStream = this.getWriteStreamObject(reporter)

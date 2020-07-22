@@ -1,5 +1,8 @@
 import fs from 'fs'
 import nodeLogger from '../src/node'
+import nodeLogger2 from '../build/node'
+
+jest.useFakeTimers()
 
 describe('wdio-logger node', () => {
     describe('log level', () => {
@@ -200,16 +203,30 @@ describe('wdio-logger node', () => {
             expect(write.mock.results[3].value).toContain('test-logFile4: Error: bar')
         })
 
+        it('is not confused by multiple copies of source code', () => {
+            process.env.WDIO_LOG_PATH = 'wdio.test.log'
+
+            const log = nodeLogger('test-logFile4')
+            const log2 = nodeLogger2('test-logFile4')
+            log.info('foo')
+            log2.error(new Error('bar'))
+
+            expect(write.mock.calls.length).toBe(2)
+            expect(write.mock.results[0].value).toContain('test-logFile4: foo')
+            expect(write.mock.results[1].value).toContain('test-logFile4: Error: bar')
+        })
+
         describe('waitForBuffer with logFile', () => {
             const scenarios = [{
                 name: 'should be ok buffer is empty',
                 writableBuffer: [],
                 logPath: 'wdio.test.log'
             }, {
-                name: 'should f buffer is not defined',
+                name: 'should flush if buffer is not defined',
                 writableBuffer: undefined,
                 logPath: 'wdio.test.log'
             }]
+
             scenarios.forEach((scenario, idx) => {
                 it(scenario.name, async () => {
                     process.env.WDIO_LOG_PATH = scenario.logPath
@@ -228,14 +245,11 @@ describe('wdio-logger node', () => {
                 log.info('foo')
                 writableBuffer = ['bar']
 
-                const start = Date.now()
-                setTimeout(() => {
-                    writableBuffer = []
-                }, 200)
-                expect(await nodeLogger.waitForBuffer()).toBe(undefined)
-                const end = Date.now()
-                expect(end - start).toBeGreaterThanOrEqual(200)
-                expect(end - start).toBeLessThanOrEqual(300)
+                const waitPromise = nodeLogger.waitForBuffer()
+                jest.advanceTimersByTime(30)
+                writableBuffer = []
+                jest.advanceTimersByTime(30)
+                expect(await waitPromise).toBe(undefined)
             })
         })
 

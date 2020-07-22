@@ -1,55 +1,137 @@
-import request from 'request'
+import got from 'got'
 import { remote } from '../../../src'
 
 describe('addValue test', () => {
-    it('should allow to add value to an input element', async () => {
-        const browser = await remote({
-            baseUrl: 'http://foobar.com',
-            capabilities: {
-                browserName: 'foobar'
-            }
-        })
-        const elem = await browser.$('#foo')
+    describe('should allow to add value to an input element', () => {
+        let browser
 
-        await elem.addValue('foobar')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/value')
-        expect(request.mock.calls[2][0].body.text).toEqual('foobar')
-        expect(request.mock.calls[2][0].body.value).toEqual(undefined)
+        beforeEach(async () => {
+            browser = await remote({
+                baseUrl: 'http://foobar.com',
+                capabilities: {
+                    browserName: 'foobar'
+                }
+            })
+        })
+
+        afterEach(() => {
+            got.mockClear()
+        })
+
+        it('add string', async () => {
+            const elem = await browser.$('#foo')
+            await elem.addValue('foobar')
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.text).toEqual('foobar')
+            expect(got.mock.calls[2][1].json.value).toEqual(undefined)
+        })
+
+        it('add number', async () => {
+            const elem = await browser.$('#foo')
+            await elem.addValue(42)
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.text).toEqual('42')
+            expect(got.mock.calls[2][1].json.value).toEqual(undefined)
+        })
+
+        it('add object', async () => {
+            const elem = await browser.$('#foo')
+            await elem.addValue({ a: 42 })
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.text).toEqual('{"a":42}')
+            expect(got.mock.calls[2][1].json.value).toEqual(undefined)
+        })
+
+        it('add boolean', async () => {
+            const elem = await browser.$('#foo')
+            await elem.addValue(true)
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.text).toEqual('true')
+            expect(got.mock.calls[2][1].json.value).toEqual(undefined)
+        })
+
+        it('add Array<any>', async () => {
+            const elem = await browser.$('#foo')
+            await elem.addValue([2, '3', true, [1, 2]])
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.text).toEqual('23true[1,2]')
+            expect(got.mock.calls[2][1].json.value).toEqual(undefined)
+        })
     })
 
-    it('should allow to add value to an input element using jsonwp', async () => {
-        const browser = await remote({
-            baseUrl: 'http://foobar.com',
-            capabilities: {
-                browserName: 'foobar-noW3C'
-            }
+    describe('should allow to add value to an input element using jsonwp', () => {
+        let browser
+
+        beforeEach(async () => {
+            browser = await remote({
+                baseUrl: 'http://foobar.com',
+                capabilities: {
+                    browserName: 'foobar-noW3C'
+                }
+            })
         })
-        const elem = await browser.$('#foo')
 
-        await elem.addValue('foobar')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/value')
-        expect(request.mock.calls[2][0].body.value).toEqual(['f', 'o', 'o', 'b', 'a', 'r'])
-        expect(request.mock.calls[2][0].body.text).toEqual(undefined)
-    })
-
-    it('should allow to add value to an input element as workaround for /appium/issues/12085', async () => {
-        const browser = await remote({
-            baseUrl: 'http://foobar.com',
-            capabilities: {
-                browserName: 'foobar',
-                mobileMode: true,
-                'appium-version': '1.10.1'
-            }
+        afterEach(() => {
+            got.mockClear()
         })
-        const elem = await browser.$('#foo')
 
-        await elem.addValue('foobar')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/value')
-        expect(request.mock.calls[2][0].body.text).toEqual('foobar')
-        expect(request.mock.calls[2][0].body.value).toEqual(['f', 'o', 'o', 'b', 'a', 'r'])
-    })
+        it('add string', async () => {
+            const elem = await browser.$('#foo')
 
-    afterEach(() => {
-        request.mockClear()
+            await elem.addValue('foobar')
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.value)
+                .toEqual(['f', 'o', 'o', 'b', 'a', 'r'])
+            expect(got.mock.calls[2][1].json.text).toEqual(undefined)
+        })
+
+        it('add number', async () => {
+            const elem = await browser.$('#foo')
+
+            await elem.addValue(42)
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.value).toEqual(['4', '2'])
+            expect(got.mock.calls[2][1].json.text).toEqual(undefined)
+        })
+
+        it('add object', async () => {
+            const elem = await browser.$('#foo')
+
+            await elem.addValue({ a: 42 })
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.value)
+                .toEqual(['{', '"', 'a', '"', ':', '4', '2', '}'])
+            expect(got.mock.calls[2][1].json.text).toEqual(undefined)
+        })
+
+        it('add boolean', async () => {
+            const elem = await browser.$('#foo')
+
+            await elem.addValue(true)
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.value)
+                .toEqual(['t', 'r', 'u', 'e'])
+            expect(got.mock.calls[2][1].json.text).toEqual(undefined)
+        })
+
+        it('add Array<any>', async () => {
+            const elem = await browser.$('#foo')
+
+            await elem.addValue([1, '2', true, [1, 2]])
+            expect(got.mock.calls[2][1].uri.pathname)
+                .toBe('/session/foobar-123/element/some-elem-123/value')
+            expect(got.mock.calls[2][1].json.value)
+                .toEqual(['1', '2', 't', 'r', 'u', 'e', '[', '1', ',', '2', ']'])
+            expect(got.mock.calls[2][1].json.text).toEqual(undefined)
+        })
     })
 })

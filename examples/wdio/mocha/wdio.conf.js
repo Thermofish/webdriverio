@@ -10,20 +10,22 @@ exports.config = {
     /**
      * specify test files
      */
-    specs: [path.resolve(__dirname, 'mocha.test.js')],
+    specs: [
+        path.resolve(__dirname, 'mocha.test.js')
+    ],
 
     /**
      * capabilities
      */
     capabilities: [{
-        browserName: 'chrome'
+        browserName: 'chrome',
+        acceptInsecureCerts: true
     }],
 
     /**
      * test configurations
      */
     logLevel: 'trace',
-    coloredLogs: true,
     framework: 'mocha',
     outputDir: __dirname,
 
@@ -31,7 +33,7 @@ exports.config = {
 
     mochaOpts: {
         ui: 'bdd',
-        timeout: 60000
+        timeout: 5000
     },
 
     /**

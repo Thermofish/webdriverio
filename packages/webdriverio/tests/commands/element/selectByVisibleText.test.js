@@ -1,4 +1,4 @@
-import request from 'request'
+import got from 'got'
 import { remote } from '../../../src'
 import { ELEMENT_KEY } from '../../../src/constants'
 import * as utils from '../../../src/utils'
@@ -19,7 +19,7 @@ describe('selectByVisibleText test', () => {
     })
 
     afterEach(() => {
-        request.mockClear()
+        got.mockClear()
         getElementFromResponseSpy.mockClear()
     })
 
@@ -28,10 +28,14 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = "someValue1"]|./option[normalize-space(text()) = "someValue1"]'
         const optgroupSelection = './optgroup/option[. = "someValue1"]|./optgroup/option[normalize-space(text()) = "someValue1"]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
@@ -42,10 +46,14 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = "some Value1"]|./option[normalize-space(text()) = "some Value1"]'
         const optgroupSelection = './optgroup/option[. = "some Value1"]|./optgroup/option[normalize-space(text()) = "some Value1"]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
@@ -56,10 +64,14 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = "someValue1"]|./option[normalize-space(text()) = "someValue1"]'
         const optgroupSelection = './optgroup/option[. = "someValue1"]|./optgroup/option[normalize-space(text()) = "someValue1"]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
@@ -70,10 +82,14 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = "some Value1"]|./option[normalize-space(text()) = "some Value1"]'
         const optgroupSelection = './optgroup/option[. = "some Value1"]|./optgroup/option[normalize-space(text()) = "some Value1"]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
@@ -84,10 +100,14 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = concat("", \'"\', "someValue1", \'"\', "", \'"\', "")]|./option[normalize-space(text()) = concat("", \'"\', "someValue1", \'"\', "", \'"\', "")]'
         const optgroupSelection = './optgroup/option[. = concat("", \'"\', "someValue1", \'"\', "", \'"\', "")]|./optgroup/option[normalize-space(text()) = concat("", \'"\', "someValue1", \'"\', "", \'"\', "")]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
@@ -98,12 +118,34 @@ describe('selectByVisibleText test', () => {
         const optionSelection = './option[. = "123"]|./option[normalize-space(text()) = "123"]'
         const optgroupSelection = './optgroup/option[. = "123"]|./optgroup/option[normalize-space(text()) = "123"]'
 
-        expect(request.mock.calls[1][0].uri.path).toBe('/wd/hub/session/foobar-123/element')
-        expect(request.mock.calls[2][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-elem-123/element')
-        expect(request.mock.calls[2][0].body.value).toBe(`${optionSelection}|${optgroupSelection}`)
-        expect(request.mock.calls[3][0].uri.path).toBe('/wd/hub/session/foobar-123/element/some-sub-elem-321/click')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/element')
+        expect(got.mock.calls[2][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-elem-123/element')
+        expect(got.mock.calls[2][1].json.value)
+            .toBe(`${optionSelection}|${optgroupSelection}`)
+        expect(got.mock.calls[3][1].uri.pathname)
+            .toBe('/session/foobar-123/element/some-sub-elem-321/click')
         expect(getElementFromResponseSpy).toBeCalledWith({
             [ELEMENT_KEY]: 'some-sub-elem-321'
         })
+    })
+
+    it('should throw if option is not found', async () => {
+        expect.hasAssertions()
+
+        const mockElem = {
+            selector: 'foobar2',
+            elementId: 'some-elem-123',
+            'element-6066-11e4-a52e-4f735466cecf': 'some-elem-123',
+            findElementFromElement: jest.fn().mockReturnValue(Promise.resolve({ error: 'no such element' }))
+        }
+        mockElem.selectByVisibleText = elem.selectByVisibleText.bind(mockElem)
+
+        try {
+            await mockElem.selectByVisibleText('non-existing-option')
+        } catch (e) {
+            expect(e.toString()).toBe('Error: Option with text "non-existing-option" not found.')
+        }
     })
 })

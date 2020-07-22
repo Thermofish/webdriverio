@@ -1,4 +1,4 @@
-import request from 'request'
+import got from 'got'
 import logger from '@wdio/logger'
 
 const log = logger('@wdio/crossbrowsertesting-service')
@@ -50,14 +50,10 @@ export default class CrossBrowserTestingService {
         if (this.suiteTitle === 'Jasmine__TopLevel__Suite') {
             this.suiteTitle = test.fullName.slice(0, test.fullName.indexOf(test.title) - 1)
         }
-
-        const context = test.parent === 'Jasmine__TopLevel__Suite' ? test.fullName : test.parent + ' - ' + test.title
-
-        global.browser.execute('cbt:test-context=' + context)
     }
 
     afterSuite (suite) {
-        if (suite.hasOwnProperty('error')) {
+        if (Object.prototype.hasOwnProperty.call(suite, 'error')) {
             ++this.failures
         }
     }
@@ -66,58 +62,39 @@ export default class CrossBrowserTestingService {
      * After test
      * @param {Object} test Test
      */
-    afterTest (test) {
-        if (!test.passed) {
+    afterTest (test, context, results) {
+        if (!results.passed) {
             ++this.failures
         }
     }
+
+    /**
+     * For CucumberJS
+     */
 
     /**
      * Before feature
-     * @param {Object} feature Feature
+     * @param {string} uri
+     * @param {Object} feature
      */
-    beforeFeature (feature) {
+    beforeFeature (uri, feature) {
         if (!this.isServiceEnabled) {
             return
         }
 
-        this.suiteTitle = feature.name || feature.getName()
-        global.browser.execute('cbt:test-context=Feature: ' + this.suiteTitle)
+        this.suiteTitle = feature.document.feature.name
     }
-
     /**
      * After step
-     * @param {Object} feature Feature
+     * @param {string} uri
+     * @param {Object} feature
+     * @param {Object} pickle
+     * @param {Object} result
      */
-    afterStep (feature) {
-        if (
-            /**
-             * Cucumber v1
-             */
-            feature.failureException ||
-            /**
-             * Cucumber v2
-             */
-            (typeof feature.getFailureException === 'function' && feature.getFailureException()) ||
-            /**
-             * Cucumber v3, v4
-             */
-            (feature.status === 'failed')
-        ) {
+    afterScenario(uri, feature, pickle, result) {
+        if (result.status === 'failed') {
             ++this.failures
         }
-    }
-
-    /**
-     * Before scenario
-     * @param {Object} scenario Scenario
-     */
-    beforeScenario (scenario) {
-        if (!this.isServiceEnabled) {
-            return
-        }
-        const scenarioName = scenario.name || scenario.getName()
-        global.browser.execute('cbt:test-context=Scenario: ' + scenarioName)
     }
 
     /**
@@ -169,23 +146,18 @@ export default class CrossBrowserTestingService {
         return this.updateJob(oldSessionId, this.failures, true, browserName)
     }
 
-    updateJob (sessionId, failures, calledOnReload = false, browserName) {
-        return new Promise((resolve, reject) => request.put(this.getRestUrl(sessionId), {
-            json: true,
-            auth: {
-                user: this.cbtUsername,
-                pass: this.cbtAuthkey
-            },
-            body: this.getBody(failures, calledOnReload, browserName)
-        }, (e, res, body) => {
-            /* istanbul ignore if */
-            this.failures = 0
-            if (e) {
-                return reject(e)
-            }
-            global.browser.jobData = body
-            return resolve(body)
-        }))
+    async updateJob (sessionId, failures, calledOnReload = false, browserName) {
+        const json = this.getBody(failures, calledOnReload, browserName)
+        this.failures = 0
+        const response = await got.put(this.getRestUrl(sessionId), {
+            json,
+            responseType: 'json',
+            username: this.cbtUsername,
+            password: this.cbtAuthkey
+        })
+
+        global.browser.jobData = response.body
+        return response.body
     }
 
     /**

@@ -1,11 +1,12 @@
 import path from 'path'
 import Mocha from 'mocha'
+import { format } from 'util'
 
 import logger from '@wdio/logger'
-import { runTestInFiberContext, executeHooksWithArgs } from '@wdio/config'
+import { runTestInFiberContext, executeHooksWithArgs } from '@wdio/utils'
 
 import { loadModule } from './utils'
-import { INTERFACES, EVENTS, NOOP } from './constants'
+import { INTERFACES, EVENTS, NOOP, MOCHA_TIMEOUT_MESSAGE, MOCHA_TIMEOUT_MESSAGE_REPLACEMENT } from './constants'
 
 const log = logger('@wdio/mocha-framework')
 
@@ -39,9 +40,10 @@ class MochaAdapter {
         this.hookCnt = new Map()
         this.testCnt = new Map()
         this.suiteIds = ['0']
+        this._hasTests = true
     }
 
-    async run () {
+    async init () {
         const { mochaOpts } = this.config
         const mocha = this.mocha = new Mocha(mochaOpts)
         mocha.loadFiles()
@@ -50,9 +52,53 @@ class MochaAdapter {
 
         this.specs.forEach((spec) => mocha.addFile(spec))
         mocha.suite.on('pre-require', ::this.preRequire)
+        this._loadFiles(mochaOpts)
+
+        return this
+    }
+
+    _loadFiles (mochaOpts) {
+        try {
+            this.mocha.loadFiles()
+
+            /**
+             * grep
+             */
+            const mochaRunner = new Mocha.Runner(this.mocha.suite)
+            if (mochaOpts.grep) {
+                mochaRunner.grep(this.mocha.options.grep, mochaOpts.invert)
+            }
+
+            this._hasTests = mochaRunner.total > 0
+        } catch (err) {
+            log.warn(
+                'Unable to load spec files quite likely because they rely on `browser` object that is not fully initialised.\n' +
+                '`browser` object has only `capabilities` and some flags like `isMobile`.\n' +
+                'Helper files that use other `browser` commands have to be moved to `before` hook.\n' +
+                `Spec file(s): ${this.specs.join(',')}\n`,
+                'Error: ', err
+            )
+        }
+    }
+
+    hasTests () {
+        return this._hasTests
+    }
+
+    async run () {
+        const mocha = this.mocha
+
+        /**
+         * import and set options for `expect-webdriverio` assertion lib once
+         * the framework was initiated so that it can detect the environment
+         */
+        const { setOptions } = require('expect-webdriverio')
+        setOptions({
+            wait: this.config.waitforTimeout, // ms to wait for expectation to succeed
+            interval: this.config.waitforInterval, // interval between attempts
+        })
 
         let runtimeError
-        await executeHooksWithArgs(this.config.before, [this.capabilities, this.specs])
         const result = await new Promise((resolve) => {
             try {
                 this.runner = mocha.run(resolve)
@@ -65,8 +111,6 @@ class MochaAdapter {
                 this.runner.on(e, this.emit.bind(this, EVENTS[e])))
 
             this.runner.suite.beforeAll(this.wrapHook('beforeSuite'))
-            this.runner.suite.beforeEach(this.wrapHook('beforeTest'))
-            this.runner.suite.afterEach(this.wrapHook('afterTest'))
             this.runner.suite.afterAll(this.wrapHook('afterSuite'))
         })
         await executeHooksWithArgs(this.config.after, [runtimeError || result, this.capabilities, this.specs])
@@ -97,14 +141,22 @@ class MochaAdapter {
         const match = MOCHA_UI_TYPE_EXTRACTOR.exec(options.ui)
         const type = (match && INTERFACES[match[1]] && match[1]) || DEFAULT_INTERFACE_TYPE
 
+        const hookArgsFn = (context) => {
+            return [{ ...context.test, parent: context.test.parent.title }, context]
+        }
+
         INTERFACES[type].forEach((fnName) => {
             let testCommand = INTERFACES[type][0]
+            const isTest = [testCommand, testCommand + '.only'].includes(fnName)
 
             runTestInFiberContext(
-                [testCommand, testCommand + '.only'],
-                this.config.beforeHook,
-                this.config.afterHook,
-                fnName
+                isTest,
+                isTest ? this.config.beforeTest : this.config.beforeHook,
+                hookArgsFn,
+                isTest ? this.config.afterTest : this.config.afterHook,
+                hookArgsFn,
+                fnName,
+                this.cid
             )
         })
         this.options(options, { context, file, mocha, options })
@@ -147,6 +199,15 @@ class MochaAdapter {
         }
 
         if (params.err) {
+            /**
+             * replace "Ensure the done() callback is being called in this test." with a more meaningful message
+             */
+            if (params.err && params.err.message && params.err.message.includes(MOCHA_TIMEOUT_MESSAGE)) {
+                const replacement = format(MOCHA_TIMEOUT_MESSAGE_REPLACEMENT, params.payload.parent.title, params.payload.title)
+                params.err.message = params.err.message.replace(MOCHA_TIMEOUT_MESSAGE, replacement)
+                params.err.stack = params.err.stack.replace(MOCHA_TIMEOUT_MESSAGE, replacement)
+            }
+
             message.error = {
                 message: params.err.message,
                 stack: params.err.stack,
@@ -158,7 +219,7 @@ class MochaAdapter {
             /**
              * hook failures are emitted as "test:fail"
              */
-            if (params.payload && params.payload.title && params.payload.title.match(/^"(before|after)( all)*" hook/g)) {
+            if (params.payload && params.payload.title && params.payload.title.match(/^"(before|after)( all| each)?" hook/)) {
                 message.type = 'hook:end'
             }
         }
@@ -274,10 +335,10 @@ class MochaAdapter {
         if (message.type === 'hook:end') {
             return this.getSyncEventIdEnd('hook')
         }
-        if (message.type === 'test:start') {
+        if (['test:start', 'test:pending'].includes(message.type)) {
             return this.getSyncEventIdStart('test')
         }
-        if (['test:pending', 'test:end', 'test:pass', 'test:fail'].includes(message.type)) {
+        if (['test:end', 'test:pass', 'test:fail'].includes(message.type)) {
             return this.getSyncEventIdEnd('test')
         }
 
@@ -287,10 +348,10 @@ class MochaAdapter {
 
 const adapterFactory = {}
 
-adapterFactory.run = async function (...args) {
+adapterFactory.init = async function (...args) {
     const adapter = new MochaAdapter(...args)
-    const result = await adapter.run()
-    return result
+    const instance = await adapter.init()
+    return instance
 }
 
 export default adapterFactory

@@ -1,7 +1,7 @@
 import { logMock } from '@wdio/logger'
 import { attach, remote, multiremote } from 'webdriverio'
 
-import { runHook, initialiseInstance, sanitizeCaps, sendFailureMessage, getInstancesData, attachToMultiremote } from '../src/utils'
+import { runHook, initialiseInstance, sanitizeCaps, sendFailureMessage, getInstancesData } from '../src/utils'
 
 process.send = jest.fn()
 
@@ -44,17 +44,17 @@ describe('utils', () => {
 
     describe('initialiseInstance', () => {
         it('should attach to an existing session if sessionId is within config', () => {
-            initialiseInstance({
+            const config = {
                 sessionId: 123,
                 foo: 'bar'
-            }, [
-                { browserName: 'chrome' }
-            ])
+            }
+            initialiseInstance(config, { browserName: 'chrome', maxInstances: 2 })
             expect(attach).toBeCalledWith({
                 sessionId: 123,
                 foo: 'bar',
-                capabilities: [{ browserName: 'chrome' }]
+                capabilities: { browserName: 'chrome' }
             })
+            expect(config.capabilities).toEqual({ browserName: 'chrome' })
             expect(multiremote).toHaveBeenCalledTimes(0)
             expect(remote).toHaveBeenCalledTimes(0)
         })
@@ -72,7 +72,7 @@ describe('utils', () => {
                     browserName: 'chrome',
                     foo: 'bar'
                 }
-            })
+            }, { foo: 'bar' })
             expect(remote).toHaveBeenCalledTimes(0)
         })
 
@@ -88,6 +88,27 @@ describe('utils', () => {
             expect(multiremote).toHaveBeenCalledTimes(0)
             expect(remote).toBeCalledWith({
                 foo: 'bar',
+                maxInstances: 123,
+                capabilities: { browserName: 'chrome' }
+            })
+        })
+
+        it('should overwrite connection properties if set in capabilities', () => {
+            initialiseInstance({
+                hostname: 'foobar',
+                port: 1234,
+                path: '/some/path'
+            },
+            {
+                browserName: 'chrome',
+                hostname: 'barfoo',
+                port: 4321,
+                path: '/'
+            })
+            expect(remote).toBeCalledWith({
+                hostname: 'barfoo',
+                port: 4321,
+                path: '/',
                 capabilities: { browserName: 'chrome' }
             })
         })
@@ -184,35 +205,6 @@ describe('utils', () => {
 
         it('isMultiremote = false', () => {
             expect(getInstancesData(null, false)).toEqual(undefined)
-        })
-    })
-
-    describe('attachToMultiremote', () => {
-        it('should build browser object', async () => {
-            const browser = await attachToMultiremote({
-                foo: { sessionId: 'foo' },
-                bar: { sessionId: 'bar' }
-            }, {
-                foo: { capabilities: { browserName: 'chrome' } },
-                bar: { capabilities: { browserName: 'firefox' } }
-            })
-
-            expect(attach.mock.calls[0][0]).toEqual({
-                sessionId: 'foo',
-                capabilities: { browserName: 'chrome' }
-            })
-            expect(attach.mock.calls[1][0]).toEqual({
-                sessionId: 'bar',
-                capabilities: { browserName: 'firefox' }
-            })
-
-            expect(typeof browser.deleteSession).toEqual('function')
-            expect(typeof browser.foo.deleteSession).toEqual('function')
-            expect(typeof browser.bar.deleteSession).toEqual('function')
-            expect(browser.foo.sessionId).toBeTruthy()
-            expect(browser.bar.sessionId).toBeTruthy()
-
-            expect(await browser.deleteSession()).toHaveLength(2)
         })
     })
 })

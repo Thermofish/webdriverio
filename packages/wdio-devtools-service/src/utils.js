@@ -9,6 +9,13 @@ const log = logger('@wdio/devtools-service:utils')
 
 const RE_DEVTOOLS_DEBUGGING_PORT_SWITCH = /--remote-debugging-port=(\d*)/
 const RE_USER_DATA_DIR_SWITCH = /--user-data-dir=([^-]*)/
+const VERSION_PROPS = ['browserVersion', 'browser_version', 'version']
+const SUPPORTED_BROWSERS_AND_MIN_VERSIONS = {
+    'chrome': 63,
+    'chromium' : 63,
+    'googlechrome': 63,
+    'google chrome': 63
+}
 
 /**
  * Find Chrome DevTools Interface port by checking Chrome switches from the chrome://version
@@ -127,4 +134,42 @@ export function quantileAtValue (median, falloff, value) {
 
     const standardizedX = (Math.log(value) - location) / (Math.SQRT2 * shape)
     return (1 - internalErf_(standardizedX)) / 2
+}
+
+/**
+ * check if browser version is lower than `minVersion`
+ * @param {object} caps capabilities
+ * @param {number} minVersion minimal chrome browser version
+ */
+export function isBrowserVersionLower (caps, minVersion) {
+    const browserVersion = getBrowserMajorVersion(caps[VERSION_PROPS.find(prop => caps[prop])])
+    return typeof browserVersion === 'number' && browserVersion < minVersion
+}
+
+/**
+ * get chromedriver major version
+ * @param   {string|*}      version chromedriver version like `78.0.3904.11` or just `78`
+ * @return  {number|*}              either major version, ex `78`, or whatever value is passed
+ */
+export function getBrowserMajorVersion (version) {
+    let majorVersion = version
+    if (typeof version === 'string') {
+        majorVersion = Number(version.split('.')[0])
+        majorVersion = isNaN(majorVersion) ? version : majorVersion
+    }
+    return majorVersion
+}
+
+/**
+ * check if browser is supported based on caps.browserName and caps.version
+ * @param {object} caps capabilities
+ */
+export function isBrowserSupported(caps) {
+    if (
+        !caps.browserName ||
+        !(caps.browserName.toLowerCase() in SUPPORTED_BROWSERS_AND_MIN_VERSIONS) ||
+        isBrowserVersionLower(caps, SUPPORTED_BROWSERS_AND_MIN_VERSIONS[caps.browserName.toLowerCase()])){
+        return false
+    }
+    return true
 }

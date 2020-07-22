@@ -1,6 +1,5 @@
 import fs from 'fs'
 import fse from 'fs-extra'
-import { format } from 'util'
 import EventEmitter from 'events'
 
 import { getErrorsFromEvent } from './utils'
@@ -10,8 +9,6 @@ import HookStats from './stats/hook'
 import TestStats from './stats/test'
 
 import RunnerStats from './stats/runner'
-
-import { MOCHA_TIMEOUT_MESSAGE, MOCHA_TIMEOUT_MESSAGE_REPLACEMENT } from './constants'
 
 export default class WDIOReporter extends EventEmitter {
     constructor (options) {
@@ -70,6 +67,7 @@ export default class WDIOReporter extends EventEmitter {
             const hookStat = new HookStats(hook)
             const currentSuite = this.currentSuites[this.currentSuites.length - 1]
             currentSuite.hooks.push(hookStat)
+            currentSuite.hooksAndTests.push(hookStat)
             this.hooks[hook.uid] = hookStat
             this.onHookStart(hookStat)
         })
@@ -85,6 +83,7 @@ export default class WDIOReporter extends EventEmitter {
             currentTest = new TestStats(test)
             const currentSuite = this.currentSuites[this.currentSuites.length - 1]
             currentSuite.tests.push(currentTest)
+            currentSuite.hooksAndTests.push(currentTest)
             this.tests[test.uid] = currentTest
             this.onTestStart(currentTest)
         })
@@ -99,16 +98,6 @@ export default class WDIOReporter extends EventEmitter {
 
         this.on('test:fail',  /* istanbul ignore next */ (test) => {
             const testStat = this.tests[test.uid]
-
-            /**
-             * replace "Ensure the done() callback is being called in this test." with more meaningful
-             * message (Mocha only)
-             */
-            if (test.error && test.error.message && test.error.message.includes(MOCHA_TIMEOUT_MESSAGE)) {
-                let replacement = format(MOCHA_TIMEOUT_MESSAGE_REPLACEMENT, test.parent, test.title)
-                test.error.message = test.error.message.replace(MOCHA_TIMEOUT_MESSAGE, replacement)
-                test.error.stack = test.error.stack.replace(MOCHA_TIMEOUT_MESSAGE, replacement)
-            }
 
             testStat.fail(getErrorsFromEvent(test))
             this.counts.failures++
@@ -131,12 +120,14 @@ export default class WDIOReporter extends EventEmitter {
             const suiteTests = currentSuite.tests
             if (!suiteTests.length || currentTest.uid !== suiteTests[suiteTests.length - 1].uid) {
                 currentSuite.tests.push(currentTest)
+                currentSuite.hooksAndTests.push(currentTest)
             } else {
                 suiteTests[suiteTests.length - 1] = currentTest
+                currentSuite.hooksAndTests[currentSuite.hooksAndTests.length - 1] = currentTest
             }
 
             this.tests[currentTest.uid] = currentTest
-            currentTest.skip()
+            currentTest.skip(test.pendingReason)
             this.counts.skipping++
             this.counts.tests++
             this.onTestSkip(currentTest)
@@ -165,13 +156,13 @@ export default class WDIOReporter extends EventEmitter {
         /**
          * browser client event handlers
          */
-        this.on('client:command',  /* istanbul ignore next */ (payload) => {
+        this.on('client:beforeCommand',  /* istanbul ignore next */ (payload) => {
             if (!currentTest) {
                 return
             }
             currentTest.output.push(Object.assign(payload, { type: 'command' }))
         })
-        this.on('client:result',  /* istanbul ignore next */ (payload) => {
+        this.on('client:afterCommand',  /* istanbul ignore next */ (payload) => {
             if (!currentTest) {
                 return
             }

@@ -1,4 +1,4 @@
-import request from 'request'
+import got from 'got'
 import { remote } from '../../../src'
 
 describe('react$', () => {
@@ -10,15 +10,15 @@ describe('react$', () => {
             }
         })
 
-        const elem = await browser.react$(
-            'myComp',
-            { some: 'props' },
-            { some: 'state' }
-        )
+        const options = {
+            props: { some: 'props' },
+            state: { some: 'state' }
+        }
+        const elem = await browser.react$('myComp', options)
 
         expect(elem.elementId).toBe('some-elem-123')
-        expect(request).toBeCalledTimes(4)
-        expect(request.mock.calls.pop()[0].body.args)
+        expect(got).toBeCalledTimes(4)
+        expect(got.mock.calls.pop()[1].json.args)
             .toEqual(['myComp', { some: 'props' }, { some: 'state' }])
     })
 
@@ -31,10 +31,10 @@ describe('react$', () => {
         })
 
         await browser.react$('myComp')
-        expect(request.mock.calls.pop()[0].body.args).toEqual(['myComp', {}, {}])
+        expect(got.mock.calls.pop()[1].json.args).toEqual(['myComp', {}, {}])
     })
 
-    it('should set error object if no element could be found', async () => {
+    it('should call getElement with React flag true', async () => {
         const browser = await remote({
             baseUrl: 'http://foobar.com',
             capabilities: {
@@ -42,11 +42,11 @@ describe('react$', () => {
             }
         })
 
-        const elem = await browser.react$('myNonExistingComp')
-        expect(elem.error).toEqual(new Error('foobar'))
+        const elem = await browser.react$('SomeCmp')
+        expect(elem.isReactElement).toBe(true)
     })
 
     afterEach(() => {
-        request.mockClear()
+        got.mockClear()
     })
 })

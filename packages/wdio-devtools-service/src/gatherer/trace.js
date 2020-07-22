@@ -1,3 +1,5 @@
+import 'core-js/modules/web.url'
+
 import EventEmitter from 'events'
 import NetworkRecorder from 'lighthouse/lighthouse-core/lib/network-recorder'
 import logger from '@wdio/logger'
@@ -85,6 +87,9 @@ export default class TraceGatherer extends EventEmitter {
      * store frame id of frames that are being traced
      */
     async onFrameNavigated (msgObj) {
+        if (!this.isTracing) {
+            return
+        }
         /**
          * page load failed, cancel tracing
          */
@@ -94,6 +99,7 @@ export default class TraceGatherer extends EventEmitter {
             this.waitForCPUIdleEvent.cancel()
             this.frameId = '"unsuccessful loaded frame"'
             this.finishTracing()
+            this.emit('tracingError', new Error(`Page with url "${msgObj.frame.url}" failed to load`))
             return clearTimeout(this.clickTraceTimeout)
         }
 
@@ -244,6 +250,7 @@ export default class TraceGatherer extends EventEmitter {
             this.finishTracing()
         } catch (err) {
             log.error(`Error capturing tracing logs: ${err.stack}`)
+            this.emit('tracingError', err)
             return this.finishTracing()
         }
     }
@@ -268,6 +275,7 @@ export default class TraceGatherer extends EventEmitter {
         delete this.frameId
         delete this.loaderId
         delete this.pageUrl
+        this.failingFrameLoadIds = []
         this.waitForNetworkIdleEvent.cancel()
         this.waitForCPUIdleEvent.cancel()
         this.emit('tracingFinished')
@@ -350,7 +358,7 @@ export default class TraceGatherer extends EventEmitter {
                 log.info('Wait for network idle canceled')
                 idleTimeout && clearTimeout(idleTimeout)
 
-                session.off('Page.domContentEventFired', domContentLoadedListener)
+                session.removeListener('Page.domContentEventFired', domContentLoadedListener)
 
                 networkStatusMonitor.removeListener('network-2-busy', onBusy)
                 networkStatusMonitor.removeListener('network-2-idle', onIdle)

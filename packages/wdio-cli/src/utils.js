@@ -1,38 +1,63 @@
+import fs from 'fs-extra'
+import ejs from 'ejs'
+import path from 'path'
+import inquirer from 'inquirer'
 import logger from '@wdio/logger'
+import readDir from 'recursive-readdir'
+import { SevereServiceError } from 'webdriverio'
+import { execSync } from 'child_process'
+import { promisify } from 'util'
+
+import { runConfig } from './commands/config'
+import { EXCLUSIVE_SERVICES, ANDROID_CONFIG, IOS_CONFIG, QUESTIONNAIRE } from './constants'
 
 const log = logger('@wdio/cli:utils')
+
+const TEMPLATE_ROOT_DIR = path.join(__dirname, 'templates', 'exampleFiles')
+const renderFile = promisify(ejs.renderFile)
 
 /**
  * run service launch sequences
  */
-export async function runServiceHook (launcher, hookName, ...args) {
-    try {
-        return await Promise.all(launcher.map((service) => {
+export async function runServiceHook(launcher, hookName, ...args) {
+    return Promise.all(launcher.map(async (service) => {
+        try {
             if (typeof service[hookName] === 'function') {
-                return service[hookName](...args)
+                await service[hookName](...args)
             }
-        }))
-    } catch (e) {
-        log.error(`A service failed in the '${hookName}' hook\n${e.stack}\n\nContinue...`)
-    }
+        } catch (e) {
+            const message = `A service failed in the '${hookName}' hook\n${e.stack}\n\n`
+
+            if (e instanceof SevereServiceError) {
+                return { status: 'rejected', reason: message }
+            }
+
+            log.error(`${message}Continue...`)
+        }
+    })).then(results => {
+        const rejectedHooks = results.filter(p => p && p.status === 'rejected')
+        if (rejectedHooks.length) {
+            return Promise.reject(`\n${rejectedHooks.map(p => p.reason).join()}\n\nStopping runner...`)
+        }
+    })
 }
 
 /**
- * Run onPrepareHook in Launcher
- * @param {Array|Function} onPrepareHook - can be array of functions or single function
+ * Run hook in service launcher
+ * @param {Array|Function} hook - can be array of functions or single function
  * @param {Object} config
  * @param {Object} capabilities
  */
-export async function runOnPrepareHook(onPrepareHook, config, capabilities) {
-    const catchFn = (e) => log.error(`Error in onPrepareHook: ${e.stack}`)
+export async function runLauncherHook(hook, ...args) {
+    const catchFn = (e) => log.error(`Error in hook: ${e.stack}`)
 
-    if (typeof onPrepareHook === 'function') {
-        onPrepareHook = [onPrepareHook]
+    if (typeof hook === 'function') {
+        hook = [hook]
     }
 
-    return Promise.all(onPrepareHook.map((hook) => {
+    return Promise.all(hook.map((hook) => {
         try {
-            return hook(config, capabilities)
+            return hook(...args)
         } catch (e) {
             return catchFn(e)
         }
@@ -64,24 +89,6 @@ export async function runOnCompleteHook(onCompleteHook, config, capabilities, ex
 }
 
 /**
- * map package names
- * used in the CLI to find the name of the package for different questions
- * answers.framework {String}
- * answers.reporters | answer.services {Array<string>}
- */
-export function getNpmPackageName(pkgLabels) {
-    if (typeof pkgLabels === 'string') {
-        return pkgLabels.split('/package/')[1]
-    }
-
-    return pkgLabels.map(pkgLabel => pkgLabel.split('/package/')[1])
-}
-
-export function getPackageName(pkg) {
-    return pkg.trim().split(' -')[0]
-}
-
-/**
  * get runner identification by caps
  */
 export function getRunnerName (caps = {}) {
@@ -98,19 +105,6 @@ export function getRunnerName (caps = {}) {
     }
 
     return runner
-}
-
-/**
- * used by the install command to better find the package to install
- */
-export function parseInstallNameAndPackage(list) {
-    const returnObj = {}
-
-    for(let item of list) {
-        returnObj[getPackageName(item)] = getNpmPackageName(item)
-    }
-
-    return returnObj
 }
 
 function buildNewConfigArray(str, type, change) {
@@ -139,22 +133,210 @@ export function findInConfig(config, type) {
     }
 
     const regex = new RegExp(regexStr, 'gmi')
-
     return config.match(regex)
 }
 
-export function replaceConfig(
-    config,
-    type,
-    name
-) {
+export function replaceConfig(config, type, name) {
     const match = findInConfig(config, type)
-    if (match && match.length) {
-        if (type === 'framework') {
-            return buildNewConfigString(config, type, name)
-        }
-        const text = match.pop()
-
-        return config.replace(text, buildNewConfigArray(text, type, name))
+    if (!match || match.length === 0) {
+        return
     }
+
+    if (type === 'framework') {
+        return buildNewConfigString(config, type, name)
+    }
+
+    const text = match.pop()
+    return config.replace(text, buildNewConfigArray(text, type, name))
+}
+
+export function addServiceDeps(names, packages, update) {
+    /**
+     * automatically install latest Chromedriver if `wdio-chromedriver-service`
+     * was selected for install
+     */
+    if (names.some(({ short }) => short === 'chromedriver')) {
+        packages.push('chromedriver')
+        if (update) {
+            // eslint-disable-next-line no-console
+            console.log(
+                '\n=======',
+                '\nPlease change path to / in your wdio.conf.js:',
+                "\npath: '/'",
+                '\n=======\n')
+        }
+    }
+
+    /**
+     * install Appium if it is not installed globally if `@wdio/appium-service`
+     * was selected for install
+     */
+    if (names.some(({ short }) => short === 'appium')) {
+        const result = execSync('appium --version || echo APPIUM_MISSING').toString().trim()
+        if (result === 'APPIUM_MISSING') {
+            packages.push('appium')
+        } else if (update) {
+            // eslint-disable-next-line no-console
+            console.log(
+                '\n=======',
+                '\nUsing globally installed appium', result,
+                '\nPlease add the following to your wdio.conf.js:',
+                "\nappium: { command: 'appium' }",
+                '\n=======\n')
+        }
+    }
+}
+/**
+ * @todo add JSComments
+ */
+export function convertPackageHashToObject(string, hash = '$--$') {
+    const splitHash = string.split(hash)
+    return {
+        package: splitHash[0],
+        short: splitHash[1]
+    }
+}
+
+export async function renderConfigurationFile (answers) {
+    const tplPath = path.join(__dirname, 'templates/wdio.conf.tpl.ejs')
+
+    const renderedTpl = await renderFile(tplPath, { answers })
+
+    fs.writeFileSync(path.join(process.cwd(), 'wdio.conf.js'), renderedTpl)
+}
+
+export async function missingConfigurationPrompt(command, message, useYarn = false) {
+    const { config } = await inquirer.prompt([
+        {
+            type: 'confirm',
+            name: 'config',
+            message: `Error: Could not execute "${command}" due to missing configuration. Would you like to create one?`,
+            default: false
+        }
+    ])
+
+    /**
+     * don't exit if running unit tests
+     */
+    if (!config && !process.env.JEST_WORKER_ID) {
+        /* istanbul ignore next */
+        console.log(message)
+        /* istanbul ignore next */
+        return process.exit(0)
+    }
+
+    return await runConfig(useYarn, false, true)
+}
+
+export const validateServiceAnswers = (answers) => {
+    let result = true
+
+    Object.entries(EXCLUSIVE_SERVICES).forEach(([name, { services, message }]) => {
+        const exists = answers.some(answer => answer.includes(name))
+
+        const hasExclusive = services.some(service =>
+            answers.some(answer => answer.includes(service))
+        )
+
+        if (exists && hasExclusive) {
+            result = `${name} cannot work together with ${services.join(', ')}\n${message}\nPlease uncheck one of them.`
+        }
+    })
+
+    return result
+}
+
+export function getCapabilities(arg) {
+    const optionalCapabilites = {
+        platformVersion: arg.platformVersion || null,
+        udid: arg.udid || null,
+        ...(arg.deviceName && { deviceName: arg.deviceName })
+    }
+    /**
+     * Parsing of option property and constructing desiredCapabilities
+     * for Appium session. Could be application(1) or browser(2-3) session.
+     */
+    if (/.*\.(apk|app|ipa)$/.test(arg.option)) {
+        return {
+            capabilities: {
+                app: arg.option,
+                ...(arg.option.endsWith('apk') ? ANDROID_CONFIG : IOS_CONFIG),
+                ...optionalCapabilites,
+            }
+        }
+    } else if (/android/.test(arg.option)) {
+        return { capabilities: { browserName: 'Chrome', ...ANDROID_CONFIG, ...optionalCapabilites } }
+    } else if (/ios/.test(arg.option)) {
+        return { capabilities: { browserName: 'Safari', ...IOS_CONFIG, ...optionalCapabilites } }
+    }
+    return { capabilities: { browserName: arg.option } }
+}
+
+/**
+ * Check if file exists in current work directory
+ * @param {string} filename to check existance for
+ */
+export function hasFile (filename) {
+    return fs.existsSync(path.join(process.cwd(), filename))
+}
+
+/**
+ * generate test files based on CLI answers
+ */
+export async function generateTestFiles (answers) {
+    const testFiles = answers.framework === 'cucumber'
+        ? [path.join(TEMPLATE_ROOT_DIR, 'cucumber')]
+        : [path.join(TEMPLATE_ROOT_DIR, 'mochaJasmine')]
+
+    if (answers.usePageObjects) {
+        testFiles.push(path.join(TEMPLATE_ROOT_DIR, 'pageobjects'))
+    }
+
+    const files = (await Promise.all(testFiles.map((dirPath) => readDir(
+        dirPath,
+        [(file, stats) => !stats.isDirectory() && !(file.endsWith('.ejs') || file.endsWith('.feature'))]
+    )))).reduce((cur, acc) => [...acc, ...(cur)], [])
+
+    for (const file of files) {
+        const renderedTpl = await renderFile(file, answers)
+        let destPath = (
+            file.endsWith('page.js.ejs')
+                ? `${answers.destPageObjectRootPath}/${path.basename(file)}`
+                : file.includes('step_definition')
+                    ? `${answers.stepDefinitions}`
+                    : `${answers.destSpecRootPath}/${path.basename(file)}`
+        ).replace(/\.ejs$/, '').replace(/\.js$/, answers.isUsingTypeScript ? '.ts' : '.js')
+
+        fs.ensureDirSync(path.dirname(destPath))
+        fs.writeFileSync(destPath, renderedTpl)
+    }
+}
+
+export async function getAnswers(yes) {
+    return yes
+        ? QUESTIONNAIRE.reduce((answers, question) => Object.assign(
+            answers,
+            question.when && !question.when(answers)
+                /**
+                 * set nothing if question doesn't apply
+                 */
+                ? {}
+                : { [question.name]: typeof question.default !== 'undefined'
+                    /**
+                     * set default value if existing
+                     */
+                    ? typeof question.default === 'function'
+                        ? question.default(answers)
+                        : question.default
+                    : question.choices && question.choices.length
+                    /**
+                     * pick first choice, select value if it exists
+                     */
+                        ? question.choices[0].value
+                            ? question.choices[0].value
+                            : question.choices[0]
+                        : {}
+                }
+        ), {})
+        : await inquirer.prompt(QUESTIONNAIRE)
 }

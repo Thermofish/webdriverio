@@ -9,9 +9,9 @@ The easiest way is to keep `@wdio/appium-service` as a devDependency in your `pa
 
 ```json
 {
-  "devDependencies": {
-    "@wdio/appium-service": "^5.0.0"
-  }
+    "devDependencies": {
+        "@wdio/appium-service": "^5.0.0"
+    }
 }
 ```
 
@@ -30,45 +30,65 @@ In order to use the service you need to add `appium` to your service array:
 ```js
 // wdio.conf.js
 export.config = {
-  // ...
-  services: ['appium'],
-  // ...
+    // ...
+    port: 4723, // default appium port
+    services: ['appium'],
+    // ...
 };
 ```
 
 ## Options
 
-The following options can be added to the wdio.conf.js file.
+The following options can be added to the wdio.conf.js file. To define options for the service you need to add the service to the `services` list in the following way:
+
+```js
+// wdio.conf.js
+export.config = {
+    // ...
+    port: 4723, // default appium port
+    services: [
+        ['appium', {
+            // Appium service options here
+            // ...
+        }]
+    ],
+    // ...
+};
+```
 
 ### logPath
 Path where all logs from the Appium server should be stored.
 
 Type: `String`
 
-Default: `{}`
-
 Example:
 ```js
 export.config = {
-    appium: {
-        logPath : "./",
-    }
+    // ...
+    services: [
+        ['appium', {
+            logPath : './'
+        }]
+    ],
+    // ...
 }
 ```
 
 ### command
-The name of the command which should be started.
+To use your own installation of Appium, e.g. globally installed, specify the command which should be started.
 
 Type: `String`
-
-Default: `{}`
 
 Example:
 ```js
 export.config = {
-    appium: {
-        command: "myAppium",
-    }
+    // ...
+    services: [
+        ['appium', {
+            command : 'appium'
+        }]
+    ],
+    // ...
 }
 ```
 
@@ -76,24 +96,30 @@ export.config = {
 Map of arguments for the Appium server, passed directly to `appium`.
 
 See [the documentation](http://appium.io/docs/en/writing-running-appium/server-args/index.html) for possible arguments.
-The arguments should be supplied in lower camel case, so `--pre-launch true` becomes `preLaunch: true`.
+The arguments should be supplied in lower camel case, so `--pre-launch true` becomes `preLaunch: true` or passed as an array.
 
-Type: `Object`
+Type: `Object` or `Array`
 
 Default: `{}`
 
 Example:
 ```js
 export.config = {
-  appium: {
-    args: {
-      // ...
-      debugLogSpacing: true,
-      platformName: 'iOS',
-      // ...
-    }
-  }
-},
+    // ...
+    services: [
+        ['appium', {
+            args: {
+                // ...
+                debugLogSpacing: true,
+                platformName: 'iOS',
+                // ...
+            }
+            // or
+            // args: ['-p', '4722', '--relaxed-security', '--log-level', 'info:info']
+        }]
+    ],
+    // ...
+}
 ```
 
 ----

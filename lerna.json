@@ -3,7 +3,14 @@
   "packages": [
     "packages/*"
   ],
-  "version": "5.9.6",
+  "version": "6.3.4",
+  "command": {
+    "bootstrap": {
+      "npmClientArgs": [
+        "--no-package-lock"
+      ]
+    }
+  },
   "changelog": {
     "repo": "webdriverio/webdriverio",
     "cacheDir": ".changelog",

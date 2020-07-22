@@ -1,5 +1,5 @@
 import Jasmine from 'jasmine'
-import { runTestInFiberContext, executeHooksWithArgs } from '@wdio/config'
+import { runTestInFiberContext, executeHooksWithArgs } from '@wdio/utils'
 import logger from '@wdio/logger'
 
 import JasmineReporter from './reporter'
@@ -7,6 +7,7 @@ import JasmineReporter from './reporter'
 const INTERFACES = {
     bdd: ['beforeAll', 'beforeEach', 'it', 'xit', 'fit', 'afterEach', 'afterAll']
 }
+const TEST_INTERFACES = ['it', 'fit', 'xit']
 const NOOP = function noop () {}
 const DEFAULT_TIMEOUT_INTERVAL = 60000
 
@@ -22,6 +23,7 @@ class JasmineAdapter {
         this.capabilities = capabilities
         this.specs = specs
         this.jrunner = {}
+        this.totalTests = 0
 
         this.jasmineNodeOpts = Object.assign({
             cleanStack: true
@@ -33,9 +35,10 @@ class JasmineAdapter {
             specs: this.specs,
             cleanStack: this.jasmineNodeOpts.cleanStack
         })
+        this._hasTests = true
     }
 
-    async run () {
+    async init () {
         const self = this
 
         this.jrunner = new Jasmine()
@@ -50,24 +53,20 @@ class JasmineAdapter {
         jasmineEnv.addReporter(this.reporter)
 
         /**
-         * Set whether to stop suite execution when a spec fails
-         */
-        const stopOnSpecFailure = !!this.jasmineNodeOpts.stopOnSpecFailure
-
-        /**
-         * Set whether to stop spec execution when an expectation fails
-        */
-        const stopSpecOnExpectationFailure = !!this.jasmineNodeOpts.stopSpecOnExpectationFailure
-
-        /**
          * Filter specs to run based on jasmineNodeOpts.grep and jasmineNodeOpts.invert
          */
         jasmineEnv.configure({
-            specFilter: ::this.customSpecFilter,
-            stopOnSpecFailure: stopOnSpecFailure,
+            specFilter: this.jasmineNodeOpts.specFilter || ::this.customSpecFilter,
+            stopOnSpecFailure: Boolean(this.jasmineNodeOpts.stopOnSpecFailure),
+            failSpecWithNoExpectations: Boolean(this.jasmineNodeOpts.failSpecWithNoExpectations),
+            failFast: this.jasmineNodeOpts.failFast,
             random: Boolean(this.jasmineNodeOpts.random),
-            oneFailurePerSpec: stopSpecOnExpectationFailure,
-            failFast: this.jasmineNodeOpts.failFast
+            seed: Boolean(this.jasmineNodeOpts.seed),
+            oneFailurePerSpec: Boolean(
+                // depcrecated old property
+                this.jasmineNodeOpts.stopSpecOnExpectationFailure ||
+                this.jasmineNodeOpts.oneFailurePerSpec
+            )
         })
 
         /**
@@ -75,15 +74,47 @@ class JasmineAdapter {
          */
         jasmine.Spec.prototype.addExpectationResult = this.getExpectationResultHandler(jasmine)
 
+        const hookArgsFn = (context) => [{ ...(self.lastTest || {}) }, context]
+
+        const emitHookEvent = (fnName, eventType) => (_test, _context, { error } = {}) => {
+            const title = `"${fnName === 'beforeAll' ? 'before' : 'after'} all" hook`
+            const suiteUid = this.reporter.startedSuite ? this.reporter.getUniqueIdentifier(this.reporter.startedSuite) : `root${this.cid}`
+            const hook = {
+                type: 'hook',
+                description: title,
+                fullName: title,
+                uid: `${suiteUid}-${fnName}`,
+                error: error ? { message: error.message } : undefined
+            }
+            this.reporter.emit('hook:' + eventType, hook)
+        }
+
         /**
          * wrap commands with wdio-sync
          */
-        INTERFACES['bdd'].forEach((fnName) => runTestInFiberContext(
-            ['it', 'fit', 'xit'],
-            this.config.beforeHook,
-            this.config.afterHook,
-            fnName
-        ))
+        INTERFACES['bdd'].forEach((fnName) => {
+            const isTest = TEST_INTERFACES.includes(fnName)
+            const beforeHook = [...this.config.beforeHook]
+            const afterHook = [...this.config.afterHook]
+
+            /**
+             * add beforeAll and afterAll hooks to reporter
+             */
+            if (fnName.includes('All')) {
+                beforeHook.push(emitHookEvent(fnName, 'start'))
+                afterHook.push(emitHookEvent(fnName, 'end'))
+            }
+
+            runTestInFiberContext(
+                isTest,
+                isTest ? this.config.beforeTest : beforeHook,
+                hookArgsFn,
+                isTest ? this.config.afterTest : afterHook,
+                hookArgsFn,
+                fnName,
+                this.cid
+            )
+        })
 
         /**
          * for a clean stdout we need to avoid that Jasmine initialises the
@@ -106,11 +137,63 @@ class JasmineAdapter {
             executeMock.apply(this, args)
         }
 
-        await executeHooksWithArgs(this.config.before, [this.capabilities, this.specs])
-        let result = await new Promise((resolve) => {
+        this._loadFiles()
+
+        return this
+    }
+
+    _loadFiles () {
+        try {
+            if (Array.isArray(this.jasmineNodeOpts.requires)) {
+                this.jrunner.addRequires(this.jasmineNodeOpts.requires)
+            }
+            if (Array.isArray(this.jasmineNodeOpts.helpers)) {
+                this.jrunner.addHelperFiles(this.jasmineNodeOpts.helpers)
+            }
+            this.jrunner.loadRequires()
+            this.jrunner.loadHelpers()
+            this.jrunner.loadSpecs()
+            this._grep(this.jrunner.env.topSuite())
+            this._hasTests = this.totalTests > 0
+        } catch (err) {
+            log.warn(
+                'Unable to load spec files quite likely because they rely on `browser` object that is not fully initialised.\n' +
+                '`browser` object has only `capabilities` and some flags like `isMobile`.\n' +
+                'Helper files that use other `browser` commands have to be moved to `before` hook.\n' +
+                `Spec file(s): ${this.specs.join(',')}\n`,
+                'Error: ', err
+            )
+        }
+    }
+
+    _grep(suite) {
+        suite.children.forEach((child) => {
+            if (Array.isArray(child.children)) {
+                return this._grep(child)
+            }
+            if (this.customSpecFilter(child)) {
+                this.totalTests++
+            }
+        })
+    }
+
+    hasTests () {
+        return this._hasTests
+    }
+
+    async run () {
+        /**
+         * import and set options for `expect-webdriverio` assertion lib once
+         * the framework was initiated so that it can detect the environment
+         */
+        const { setOptions } = require('expect-webdriverio')
+        setOptions({
+            wait: this.config.waitforTimeout, // ms to wait for expectation to succeed
+            interval: this.config.waitforInterval, // interval between attempts
+        })
+
+        const result = await new Promise((resolve) => {
             this.jrunner.env.beforeAll(this.wrapHook('beforeSuite'))
-            this.jrunner.env.beforeEach(this.wrapHook('beforeTest'))
-            this.jrunner.env.afterEach(this.wrapHook('afterTest'))
             this.jrunner.env.afterAll(this.wrapHook('afterSuite'))
 
             this.jrunner.onComplete(() => resolve(this.reporter.getFailedCount()))
@@ -124,13 +207,14 @@ class JasmineAdapter {
         const { grep, invertGrep } = this.jasmineNodeOpts
         const grepMatch = !grep || spec.getFullName().match(new RegExp(grep)) !== null
         if (grepMatch === Boolean(invertGrep)) {
-            spec.pend()
+            spec.pend('grep')
+            return false
         }
         return true
     }
 
     /**
-     * Hooks which are added as true Mocha hooks need to call done() to notify async
+     * Hooks which are added as true Jasmine hooks need to call done() to notify async
      */
     wrapHook (hookName) {
         return (done) => executeHooksWithArgs(
@@ -232,10 +316,10 @@ class JasmineAdapter {
 }
 
 const adapterFactory = {}
-adapterFactory.run = async function (...args) {
+adapterFactory.init = async function (...args) {
     const adapter = new JasmineAdapter(...args)
-    const result = await adapter.run()
-    return result
+    const instance = await adapter.init()
+    return instance
 }
 
 export default adapterFactory

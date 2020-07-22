@@ -6,9 +6,15 @@ import logger from '@wdio/logger'
 
 import RunnerTransformStream from './transformStream'
 import ReplQueue from './replQueue'
+import RunnerStream from './stdStream'
 
 const log = logger('@wdio/local-runner')
 const replQueue = new ReplQueue()
+
+const stdOutStream = new RunnerStream()
+const stdErrStream = new RunnerStream()
+stdOutStream.pipe(process.stdout)
+stdErrStream.pipe(process.stderr)
 
 /**
  * WorkerInstance
@@ -23,18 +29,16 @@ export default class WorkerInstance extends EventEmitter {
      * @param  {string}   configFile  path to config file (for sub process to parse)
      * @param  {object}   caps        capability object
      * @param  {string[]} specs       list of paths to test files to run in this worker
-     * @param  {object}   server      configuration details about automation backend this session is using
      * @param  {number}   retries     number of retries remaining
      * @param  {object}   execArgv    execution arguments for the test run
      */
-    constructor (config, { cid, configFile, caps, specs, server, execArgv, retries }, stdout, stderr) {
+    constructor (config, { cid, configFile, caps, specs, execArgv, retries }, stdout, stderr) {
         super()
         this.cid = cid
         this.config = config
         this.configFile = configFile
         this.caps = caps
         this.specs = specs
-        this.server = server || {}
         this.execArgv = execArgv
         this.retries = retries
         this.isBusy = false
@@ -49,7 +53,7 @@ export default class WorkerInstance extends EventEmitter {
         const { cid, execArgv } = this
         const argv = process.argv.slice(2)
 
-        const runnerEnv = Object.assign(process.env, this.config.runnerEnv, {
+        const runnerEnv = Object.assign({}, process.env, this.config.runnerEnv, {
             WDIO_WORKER: true
         })
 
@@ -62,7 +66,7 @@ export default class WorkerInstance extends EventEmitter {
             cwd: process.cwd(),
             env: runnerEnv,
             execArgv,
-            silent: true
+            stdio: ['inherit', 'pipe', 'pipe', 'ipc']
         })
 
         childProcess.on('message', ::this._handleMessage)
@@ -71,9 +75,8 @@ export default class WorkerInstance extends EventEmitter {
 
         /* istanbul ignore if */
         if (!process.env.JEST_WORKER_ID) {
-            childProcess.stdout.pipe(new RunnerTransformStream(cid)).pipe(process.stdout)
-            childProcess.stderr.pipe(new RunnerTransformStream(cid)).pipe(process.stderr)
-            process.stdin.pipe(childProcess.stdin)
+            childProcess.stdout.pipe(new RunnerTransformStream(cid)).pipe(stdOutStream)
+            childProcess.stderr.pipe(new RunnerTransformStream(cid)).pipe(stdErrStream)
         }
 
         return childProcess
@@ -98,7 +101,6 @@ export default class WorkerInstance extends EventEmitter {
             } else {
                 this.sessionId = payload.content.sessionId
                 delete payload.content.sessionId
-                Object.assign(this.server, payload.content)
             }
             return
         }
@@ -151,8 +153,8 @@ export default class WorkerInstance extends EventEmitter {
      * @param  {object} argv     arguments for functions to call
      * @return null
      */
-    postMessage (command, argv) {
-        const { cid, configFile, caps, specs, server, retries, isBusy } = this
+    postMessage (command, args) {
+        const { cid, configFile, caps, specs, retries, isBusy } = this
 
         if (isBusy && command !== 'endSession') {
             return log.info(`worker with cid ${cid} already busy and can't take new commands`)
@@ -166,7 +168,7 @@ export default class WorkerInstance extends EventEmitter {
             this.childProcess = this.startProcess()
         }
 
-        this.childProcess.send({ cid, command, configFile, argv, caps, specs, server, retries })
+        this.childProcess.send({ cid, command, configFile, args, caps, specs, retries })
         this.isBusy = true
     }
 }

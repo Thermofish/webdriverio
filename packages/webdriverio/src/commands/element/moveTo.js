@@ -5,26 +5,28 @@
  * no offset, the mouse will be moved to the center of the element. If the element
  * is not visible, it will be scrolled into view.
  *
- * @param {Number=} xoffset  X offset to move to, relative to the top-left corner of the element. If not specified, the mouse will move to the middle of the element.
- * @param {Number=} yoffset  Y offset to move to, relative to the top-left corner of the element. If not specified, the mouse will move to the middle of the element.
+ * @param {MoveToOptions=} options          moveTo command options
+ * @param {Number=}        options.xOffset  X offset to move to, relative to the top-left corner of the element. If not specified, the mouse will move to the middle of the element.
+ * @param {Number=}        options.yOffset  Y offset to move to, relative to the top-left corner of the element. If not specified, the mouse will move to the middle of the element.
  *
  * @see  https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#sessionsessionidmoveto
  * @type protocol
  */
 
-import { getElementRect } from '../../utils'
+import { getElementRect, getScrollPosition } from '../../utils'
 
-export default async function moveTo (xoffset, yoffset) {
+export default async function moveTo ({ xOffset, yOffset } = {}) {
     if (!this.isW3C) {
-        return this.moveToElement(this.elementId, xoffset, yoffset)
+        return this.moveToElement(this.elementId, xOffset, yOffset)
     }
 
     /**
      * get rect of element
      */
     const { x, y, width, height } = await getElementRect(this)
-    const newXoffset = parseInt(x + (typeof xoffset === 'number' ? xoffset : (width / 2)), 10)
-    const newYoffset = parseInt(y + (typeof yoffset === 'number' ? yoffset : (height / 2)), 10)
+    const { scrollX, scrollY } = await getScrollPosition(this)
+    const newXOffset = parseInt(x - scrollX + (typeof xOffset === 'number' ? xOffset : (width / 2)), 10)
+    const newYOffset = parseInt(y - scrollY + (typeof yOffset === 'number' ? yOffset : (height / 2)), 10)
 
     /**
      * W3C way of handle the mouse move actions
@@ -33,6 +35,6 @@ export default async function moveTo (xoffset, yoffset) {
         type: 'pointer',
         id: 'finger1',
         parameters: { pointerType: 'mouse' },
-        actions: [{ type: 'pointerMove', duration: 0, x: newXoffset, y: newYoffset }]
+        actions: [{ type: 'pointerMove', duration: 0, x: newXOffset, y: newYOffset }]
     }]).then(() => this.releaseActions())
 }

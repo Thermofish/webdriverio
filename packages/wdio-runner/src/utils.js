@@ -1,6 +1,7 @@
 import merge from 'deepmerge'
 import logger from '@wdio/logger'
 import { remote, multiremote, attach } from 'webdriverio'
+import WebDriver from 'webdriver'
 import { DEFAULT_CONFIGS } from '@wdio/config'
 
 const log = logger('@wdio/local-runner:utils')
@@ -28,12 +29,18 @@ export function runHook (hookName, config, caps, specs) {
  * @param  {Object} caps  desired session capabilities
  * @return {Object}       sanitized caps
  */
-export function sanitizeCaps (caps) {
+export function sanitizeCaps (caps, filterOut) {
+    const defaultConfigsKeys = [
+        // WDIO config keys
+        ...Object.keys(DEFAULT_CONFIGS()),
+        // WebDriver config keys
+        ...Object.keys(WebDriver.DEFAULTS)
+    ]
     return Object.keys(caps).filter(key => (
         /**
          * filter out all wdio config keys
          */
-        !Object.keys(DEFAULT_CONFIGS).includes(key)
+        !defaultConfigsKeys.includes(key) === !filterOut
     )).reduce((obj, key) => {
         obj[key] = caps[key]
         return obj
@@ -44,6 +51,7 @@ export function sanitizeCaps (caps) {
  * initialise browser instance depending whether remote or multiremote is requested
  * @param  {Object}  config        configuration of sessions
  * @param  {Object}  capabilities  desired session capabilities
+ * @param  {boolean} isMultiremote isMultiremote
  * @return {Promise}               resolves with browser object
  */
 export async function initialiseInstance (config, capabilities, isMultiremote) {
@@ -52,16 +60,15 @@ export async function initialiseInstance (config, capabilities, isMultiremote) {
      */
     if (config.sessionId) {
         log.debug(`attach to session with id ${config.sessionId}`)
-        return attach({
-            ...config,
-            capabilities: capabilities
-        })
+        config.capabilities = sanitizeCaps(capabilities)
+        return attach({ ...config })
     }
 
     if (!isMultiremote) {
         log.debug('init remote session')
-        config.capabilities = sanitizeCaps(capabilities)
-        return remote(config)
+        const sessionConfig = { ...config, ...sanitizeCaps(capabilities, true) }
+        sessionConfig.capabilities = sanitizeCaps(capabilities)
+        return remote(sessionConfig)
     }
 
     const options = {}
@@ -71,7 +78,7 @@ export async function initialiseInstance (config, capabilities, isMultiremote) {
         options[browserName] = merge(config, capabilities[browserName], MERGE_OPTIONS)
     }
 
-    const browser = await multiremote(options)
+    const browser = await multiremote(options, config)
     for (let browserName of Object.keys(capabilities)) {
         global[browserName] = browser[browserName]
     }
@@ -138,31 +145,4 @@ export function getInstancesData(browser, isMultiremote) {
     }
 
     return instances
-}
-
-/**
- * Attach to Multiremote
- * @param {object} instances mutliremote instances object
- * @param {object} caps multiremote capabilities
- * @return {object}
- */
-export async function attachToMultiremote(instances, caps) {
-    // emulate multiremote browser object
-    const browser = {
-        instances: Object.keys(instances),
-        deleteSession () {
-            return Promise.all(Object.keys(instances).map(name => browser[name].deleteSession()))
-        }
-    }
-
-    /**
-     * attach to every multiremote instance
-     */
-    await Promise.all(
-        Object.keys(instances).map(async name => {
-            browser[name] = await initialiseInstance(instances[name], caps[name].capabilities, false)
-        })
-    )
-
-    return browser
 }

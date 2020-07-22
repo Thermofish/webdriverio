@@ -1,6 +1,6 @@
 /**
  *
- * Protocol binding to load or get the URL of the browser. If a baseUrl is
+ * Protocol binding to load the URL of the browser. If a baseUrl is
  * specified in the config, it will be prepended to the url parameter using
  * node's url.resolve() method.
  *
@@ -25,7 +25,6 @@
  * </example>
  *
  * @param {String=} url  the URL to navigate to
- * @return {String}     the current URL
  *
  * @see  https://w3c.github.io/webdriver/webdriver-spec.html#dfn-get
  * @see  https://nodejs.org/api/url.html#url_url_resolve_from_to

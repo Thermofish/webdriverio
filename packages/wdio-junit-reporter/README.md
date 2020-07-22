@@ -177,10 +177,8 @@ Type: `Object`<br>
 Default: ``function(opts){return `wdio-${this.cid}-${name}-reporter.log`}``
 
 ```
-outputFileFormat: {
-    single: function (options) {
-        return 'mycustomfilename.xml';
-    }
+outputFileFormat: function (options) {
+    return 'mycustomfilename.xml';
 }
 ```
 > Note: `options.capabilities` is your capabilities object for that runner, so specifying `${options.capabilities}` in your string will return [Object object]. You must specify which properties of capabilities you want in your filename.
@@ -191,6 +189,14 @@ Gives the ability to provide custom regex for formatting test suite name (e.g. i
 
 Type: `Regex`,<br>
 Default: `/[^a-z0-9]+/`
+
+### addFileAttribute
+
+Adds a file attribute to each testcase. This config is primarily for CircleCI. This setting provides richer details but may break on other CI platforms.
+
+Type: `Boolean`,<br>
+Default: `false`
+
 
 ### packageName
 

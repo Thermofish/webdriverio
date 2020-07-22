@@ -1,29 +1,77 @@
 import logger from '@wdio/logger'
 import { spawn } from 'child_process'
 import { createWriteStream, ensureFileSync } from 'fs-extra'
-import paramCase from 'param-case'
 import { promisify } from 'util'
-import getFilePath from './utils/getFilePath'
+import { getFilePath, getAppiumCommand, cliArgsFromKeyValue } from './utils'
 
 const log = logger('@wdio/appium-service')
-const DEFAULT_LOG_FILENAME = 'appium.txt'
+const DEFAULT_LOG_FILENAME = 'wdio-appium.log'
 
-export class AppiumLauncher {
-    constructor() {
-        this.logPath = null
-        this.command = ''
+const DEFAULT_CONNECTION = {
+    protocol: 'http',
+    hostname: 'localhost',
+    port: 4723,
+    path: '/'
+}
+
+export default class AppiumLauncher {
+    constructor(options, capabilities, config) {
+        this.options = options
+        this.capabilities = capabilities
+        this.args = {
+            basePath: '/',
+            ...(options.args || {})
+        }
+        this.logPath = options.logPath || config.outputDir
+        this.command = options.command
         this.appiumArgs = []
+
+        /**
+         * Windows expects node to be explicitely set as command and appium
+         * module path as it's first argument
+         */
+        if (!this.command) {
+            this.command = 'node'
+            this.appiumArgs.push(getAppiumCommand())
+        }
     }
 
-    async onPrepare(config) {
-        const appiumConfig = config.appium || {}
+    async onPrepare() {
+        const isWindows = process.platform === 'win32'
 
-        this.logPath = appiumConfig.logPath
-        this.command = appiumConfig.command || this._getAppiumCommand()
-        this.appiumArgs = this._cliArgsFromKeyValue(appiumConfig.args || {})
+        /**
+         * Append remaining arguments
+         */
+        this.appiumArgs.push(...cliArgsFromKeyValue(this.args))
 
-        const asyncStartAppium = promisify(this._startAppium)
-        this.process = await asyncStartAppium(this.command, this.appiumArgs, this.waitStartTime)
+        /**
+         * Windows needs to be started through `cmd` and the command needs to be an arg
+         */
+        if (isWindows) {
+            this.appiumArgs.unshift('/c', this.command)
+            this.command = 'cmd'
+        }
+
+        /**
+         * update capability connection options to connect
+         * to Appium server
+         */
+        (
+            Array.isArray(this.capabilities)
+                ? this.capabilities
+                : Object.values(this.capabilities)
+        ).forEach((cap) => Object.assign(
+            cap,
+            DEFAULT_CONNECTION,
+            this.args.port ? { port: this.args.port } : {},
+            { path: this.args.basePath },
+            { ...cap }
+        ))
+
+        /**
+         * start Appium
+         */
+        this.process = await promisify(this._startAppium)(this.command, this.appiumArgs)
 
         if (typeof this.logPath === 'string') {
             this._redirectLogStream(this.logPath)
@@ -37,9 +85,10 @@ export class AppiumLauncher {
         }
     }
 
-    _startAppium(command, args, waitStartTime, callback) {
+    _startAppium(command, args, callback) {
         log.debug(`Will spawn Appium process: ${command} ${args.join(' ')}`)
         let process = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+        let error
 
         process.stdout.on('data', (data) => {
             if (data.includes('Appium REST http interface listener started')) {
@@ -48,10 +97,16 @@ export class AppiumLauncher {
             }
         })
 
+        /**
+         * only capture first error to print it in case Appium failed to start.
+         */
+        process.stderr.once('data', err => { error = err })
+
         process.once('exit', (exitCode) => {
             let errorMessage = `Appium exited before timeout (exit code: ${exitCode})`
             if (exitCode == 2) {
-                errorMessage += ' - Check that you don\'t already have a running Appium service.'
+                errorMessage += '\n' + (error || 'Check that you don\'t already have a running Appium service.')
+                log.error(errorMessage)
             }
             callback(new Error(errorMessage), null)
         })
@@ -67,34 +122,5 @@ export class AppiumLauncher {
         const logStream = createWriteStream(logFile, { flags: 'w' })
         this.process.stdout.pipe(logStream)
         this.process.stderr.pipe(logStream)
-    }
-
-    _getAppiumCommand() {
-        return require.resolve('appium')
-    }
-
-    _cliArgsFromKeyValue(keyValueArgs) {
-        const cliArgs = []
-        for (let key in keyValueArgs) {
-            const value = keyValueArgs[key]
-            // If the value is false or null the argument is discarded
-            if ((typeof value === 'boolean' && !value) || value === null) {
-                continue
-            }
-
-            cliArgs.push(`--${paramCase(key)}`)
-
-            // Only non-boolean and non-null values are added as option values
-            if (typeof value !== 'boolean' && value !== null) {
-                cliArgs.push(this._sanitizeCliOptionValue(value))
-            }
-        }
-        return cliArgs
-    }
-
-    _sanitizeCliOptionValue(value) {
-        const valueString = String(value)
-        // Encapsulate the value string in single quotes if it contains a white space
-        return /\s/.test(valueString) ? `'${valueString}'` : valueString
     }
 }

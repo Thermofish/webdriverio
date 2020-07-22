@@ -5,7 +5,7 @@ WebdriverIO DevTools Service
 
 With Chrome v63 and up the browser [started to support](https://developers.google.com/web/updates/2017/10/devtools-release-notes#multi-client) multi clients allowing arbitrary clients to access the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/). This provides interesting opportunities to automate Chrome beyond the [WebDriver protocol](https://www.w3.org/TR/webdriver/). With this service you can enhance the wdio browser object to leverage that access and call Chrome DevTools commands within your tests to e.g. intercept requests, throttle network capabilities or take CSS/JS coverage.
 
-__Note:__ this service currently only supports Chrome v63 and up!
+_**Note:** this service currently only supports Chrome v63 and up, and Chromium (MicrosfotEdge is not yet supported)!_ 
 
 ## Installation
 
@@ -13,9 +13,9 @@ The easiest way is to keep `@wdio/devtools-service` as a devDependency in your `
 
 ```json
 {
-  "devDependencies": {
-    "@wdio/devtools-service": "^5.0.0"
-  }
+    "devDependencies": {
+        "@wdio/devtools-service": "^5.0.0"
+    }
 }
 ```
 
@@ -29,19 +29,24 @@ Instructions on how to install `WebdriverIO` can be found [here.](https://webdri
 
 ## Configuration
 
-In order to use the service you just need to add the service to your service list in your `wdio.conf.js` like:
+In order to use the service you just need to add the service to your service list in your `wdio.conf.js`, like:
 
 ```js
 // wdio.conf.js
 export.config = {
-  // ...
-  services: [['devtools', {
-      debuggerAddress: '10.0.0.3:9222'
-  }]],
-  // ...
+    // ...
+    services: ['devtools'],
+    // ...
 };
 ```
-- `debuggerAddress` - optional parameter, you could set host and port.
+
+## Options
+
+### debuggerAddress
+Define endpoint for Chrome DevTools protocol manually (e.g. `localhost:24563`). (optional)
+
+Type: `string`<br>
+Default: `null`
 
 ## Usage
 
@@ -175,6 +180,39 @@ browser.enablePerformanceAudits({
 ```
 
 The following network throttling profiles are available: `offline`, `GPRS`, `Regular 2G`, `Good 2G`, `Regular 3G`, `Good 3G`, `Regular 4G`, `DSL`, `Wifi` and `online` (no throttling).
+
+### Device Emulation
+
+The service allows you to emulate a specific device type. If set, the browser viewport will be modified to fit the device capabilities as well as the user agent will set according to the device user agent. To set a predefined device profile you can run:
+
+```js
+browser.emulateDevice('iPhone X')
+// or `browser.emulateDevice('iPhone X', true)` if you want to be in landscape mode
+```
+
+Available predefined device profiles are: `Blackberry PlayBook`, `BlackBerry Z30`, `Galaxy Note 3`, `Galaxy Note II`, `Galaxy S III`, `Galaxy S5`, `iPad`, `iPad Mini`, `iPad Pro`, `iPhone 4`, `iPhone 5`, `iPhone 6`, `iPhone 6 Plus`, `iPhone 7`, `iPhone 7 Plus`, `iPhone 8`, `iPhone 8 Plus`, `iPhone SE`, `iPhone X`, `JioPhone 2`,
+`Kindle Fire HDX`, `LG Optimus L70`, `Microsoft Lumia 550`, `Microsoft Lumia 950`, `Nexus 10`, `Nexus 4`, `Nexus 5`, `Nexus 5X`, `Nexus 6`, `Nexus 6P`, `Nexus 7`, `Nokia Lumia 520`, `Nokia N9`, `Pixel 2`, `Pixel 2 XL`
+
+You can also define your own device profile by providing an object as parameter like in the following example:
+
+```js
+browser.emulateDevice({
+    viewport: {
+        width: 550, // <number> page width in pixels.
+        height: 300, // <number> page height in pixels.
+        deviceScaleFactor: 1, //  <number> Specify device scale factor (can be thought of as dpr). Defaults to 1
+        isMobile: true, // <boolean> Whether the meta viewport tag is taken into account. Defaults to false
+        hasTouch: true, // <boolean> Specifies if viewport supports touch events. Defaults to false
+        isLandscape: true // <boolean> Specifies if viewport is in landscape mode. Defaults to false
+    },
+    userAgent: 'my custom user agent'
+})
+```
+
+#### Note
+
+This only works if you don't use `mobileEmulation` within `capabilities['goog:chromeOptions']`.
+If `mobileEmulation` is present the call to `browser.emulateDevice()` won't do anything.
 
 ### Chrome DevTools Access
 

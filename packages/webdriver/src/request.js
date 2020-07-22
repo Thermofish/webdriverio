@@ -1,15 +1,20 @@
-import url from 'url'
-import http from 'http'
 import path from 'path'
+import http from 'http'
 import https from 'https'
-import merge from 'lodash.merge'
-import request from 'request'
 import EventEmitter from 'events'
 
+import got from 'got'
 import logger from '@wdio/logger'
+import { transformCommandLogResult } from '@wdio/utils'
 
 import { isSuccessfulResponse, getErrorFromResponseBody } from './utils'
 import pkg from '../package.json'
+
+const DEFAULT_HEADERS = {
+    'Connection': 'keep-alive',
+    'Accept': 'application/json',
+    'User-Agent': 'webdriver/' + pkg.version
+}
 
 const log = logger('webdriver')
 const agents = {
@@ -18,45 +23,51 @@ const agents = {
 }
 
 export default class WebDriverRequest extends EventEmitter {
-    constructor (method, endpoint, body) {
+    constructor (method, endpoint, body, isHubCommand) {
         super()
         this.body = body
         this.method = method
         this.endpoint = endpoint
+        this.isHubCommand = isHubCommand
         this.requiresSessionId = this.endpoint.match(/:sessionId/)
         this.defaultOptions = {
             method,
-            followAllRedirects: true,
-            json: true,
-            headers: {
-                'Connection': 'keep-alive',
-                'Accept': 'application/json',
-                'User-Agent': 'webdriver/' + pkg.version
-            }
+            retry: 0, // we have our own retry mechanism
+            followRedirect: true,
+            responseType: 'json',
+            throwHttpErrors: false
         }
     }
 
     makeRequest (options, sessionId) {
-        const fullRequestOptions = merge({}, this.defaultOptions, this._createOptions(options, sessionId))
+        let fullRequestOptions = Object.assign({}, this.defaultOptions, this._createOptions(options, sessionId))
+        if (typeof options.transformRequest === 'function') {
+            fullRequestOptions = options.transformRequest(fullRequestOptions)
+        }
+
         this.emit('request', fullRequestOptions)
-        return this._request(fullRequestOptions, options.connectionRetryCount)
+        return this._request(fullRequestOptions, options.transformResponse, options.connectionRetryCount, 0)
     }
 
     _createOptions (options, sessionId) {
         const requestOptions = {
-            agent: options.agent || agents[options.protocol],
-            headers: typeof options.headers === 'object' ? options.headers : {},
-            qs: typeof options.queryParams === 'object' ? options.queryParams : {}
+            https: {},
+            agent: options.agent || agents,
+            headers: {
+                ...DEFAULT_HEADERS,
+                ...(typeof options.headers === 'object' ? options.headers : {})
+            },
+            searchParams: typeof options.queryParams === 'object' ? options.queryParams : {},
+            timeout: options.connectionRetryTimeout
         }
 
         /**
          * only apply body property if existing
          */
         if (this.body && (Object.keys(this.body).length || this.method === 'POST')) {
-            requestOptions.body = this.body
-            requestOptions.headers = merge({}, requestOptions.headers, {
-                'Content-Length': Buffer.byteLength(JSON.stringify(requestOptions.body), 'UTF-8')
-            })
+            const contentLength = Buffer.byteLength(JSON.stringify(this.body), 'utf8')
+            requestOptions.json = this.body
+            requestOptions.headers['Content-Length'] = contentLength
         }
 
         /**
@@ -68,73 +79,125 @@ export default class WebDriverRequest extends EventEmitter {
             throw new Error('A sessionId is required for this command')
         }
 
-        requestOptions.uri = url.parse(
+        requestOptions.uri = new URL(
             `${options.protocol}://` +
             `${options.hostname}:${options.port}` +
-            path.join(options.path, this.endpoint.replace(':sessionId', sessionId))
+            (this.isHubCommand
+                ? this.endpoint
+                : path.join(options.path, this.endpoint.replace(':sessionId', sessionId)))
         )
 
         /**
          * send authentication credentials only when creating new session
          */
         if (this.endpoint === '/session' && options.user && options.key) {
-            requestOptions.auth = {
-                user: options.user,
-                pass: options.key
-            }
+            requestOptions.username = options.user
+            requestOptions.password = options.key
         }
 
         /**
          * if the environment variable "STRICT_SSL" is defined as "false", it doesn't require SSL certificates to be valid.
          */
-        requestOptions.strictSSL = !(process.env.STRICT_SSL === 'false' || process.env.strict_ssl === 'false')
+        requestOptions.https.rejectUnauthorized = !(
+            process.env.STRICT_SSL === 'false' ||
+            process.env.strict_ssl === 'false'
+        )
 
         return requestOptions
     }
 
-    _request (fullRequestOptions, totalRetryCount = 0, retryCount = 0) {
+    async _request (fullRequestOptions, transformResponse, totalRetryCount = 0, retryCount = 0) {
         log.info(`[${fullRequestOptions.method}] ${fullRequestOptions.uri.href}`)
 
-        if (fullRequestOptions.body && Object.keys(fullRequestOptions.body).length) {
-            log.info('DATA', fullRequestOptions.body)
+        if (fullRequestOptions.json && Object.keys(fullRequestOptions.json).length) {
+            log.info('DATA', transformCommandLogResult(fullRequestOptions.json))
         }
 
-        return new Promise((resolve, reject) => request(fullRequestOptions, (err, response, body) => {
-            const error = err || getErrorFromResponseBody(body)
-
-            /**
-             * Resolve only if successful response
-             */
-            if (!err && isSuccessfulResponse(response.statusCode, body)) {
-                this.emit('response', { result: body })
-                return resolve(body)
-            }
-
-            /**
-             *  stop retrying as this will never be successful.
-             *  we will handle this at the elementErrorHandler
-             */
-            if(error.name === 'stale element reference') {
-                log.warn('Request encountered a stale element - terminating request')
-                this.emit('response', { error })
-                return reject(error)
-            }
-
+        /**
+         * handle retries for requests
+         * @param {Error} error  error object that causes the retry
+         * @param {String} msg   message that is being shown as warning to user
+         */
+        const retry = (error, msg) => {
             /**
              * stop retrying if totalRetryCount was exceeded or there is no reason to
              * retry, e.g. if sessionId is invalid
              */
             if (retryCount >= totalRetryCount || error.message.includes('invalid session id')) {
-                log.error('Request failed due to', error)
+                log.error(`Request failed with status ${response.statusCode} due to ${error}`)
                 this.emit('response', { error })
-                return reject(error)
+                error.statusCode = response.statusCode
+                error.statusMessage = response.statusMessage
+                throw error
             }
 
             ++retryCount
             this.emit('retry', { error, retryCount })
-            log.warn('Request failed due to', error.message)
+            log.warn(msg)
             log.info(`Retrying ${retryCount}/${totalRetryCount}`)
-            this._request(fullRequestOptions, totalRetryCount, retryCount).then(resolve, reject)
-        }))
+            return this._request(fullRequestOptions, transformResponse, totalRetryCount, retryCount)
+        }
+
+        let response = await got(fullRequestOptions.uri, { ...fullRequestOptions })
+            .catch((err) => err)
+
+        /**
+         * handle request errors
+         */
+        if (response instanceof Error) {
+            /**
+             * handle timeouts
+             */
+            if (response.code === 'ETIMEDOUT') {
+                return retry(response, 'Request timed out! Consider increasing the "connectionRetryTimeout" option.')
+            }
+
+            /**
+             * throw if request error is unknown
+             */
+            throw response
+        }
+
+        if (typeof transformResponse === 'function') {
+            response = transformResponse(response, fullRequestOptions)
+        }
+
+        const error = getErrorFromResponseBody(response.body)
+
+        /**
+         * hub commands don't follow standard response formats
+         * and can have empty bodies
+         */
+        if (this.isHubCommand) {
+            /**
+             * if body contains HTML the command was called on a node
+             * directly without using a hub, therefor throw
+             */
+            if (typeof response.body === 'string' && response.body.startsWith('<!DOCTYPE html>')) {
+                return Promise.reject(new Error('Command can only be called to a Selenium Hub'))
+            }
+
+            return { value: response.body || null }
+        }
+
+        /**
+         * Resolve only if successful response
+         */
+        if (isSuccessfulResponse(response.statusCode, response.body)) {
+            this.emit('response', { result: response.body })
+            return response.body
+        }
+
+        /**
+         *  stop retrying as this will never be successful.
+         *  we will handle this at the elementErrorHandler
+         */
+        if(error.name === 'stale element reference') {
+            log.warn('Request encountered a stale element - terminating request')
+            this.emit('response', { error })
+            throw error
+        }
+
+        return retry(error, `Request failed with status ${response.statusCode} due to ${error.message}`)
     }
 }

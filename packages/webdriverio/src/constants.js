@@ -30,12 +30,34 @@ export const ELEMENT_KEY = 'element-6066-11e4-a52e-4f735466cecf'
 
 export const WDIO_DEFAULTS = {
     /**
+     * allows to specify automation protocol
+     */
+    automationProtocol: {
+        type: (param) => {
+            if (typeof param !== 'string') {
+                throw new Error('the "automationProtocol" option needs to from type strings')
+            } else if (!['webdriver', 'devtools', './protocol-stub'].includes(param.toLowerCase())) {
+                throw new Error(`Currently only "webdriver" and "devtools" is supproted as automationProtocol, you set "${param}"`)
+            }
+
+            try {
+                require.resolve(param)
+            } catch (e) {
+                /* istanbul ignore next */
+                throw new Error(
+                    'Automation protocol package is not installed!\n' +
+                    `Please install it via \`npm install ${param}\``
+                )
+            }
+        }
+    },
+    /**
      * define specs for test execution
      */
     specs: {
         type: (param) => {
             if (!Array.isArray(param)) {
-                throw new Error('the "specs" options needs to be a list of strings')
+                throw new Error('the "specs" option needs to be a list of strings')
             }
         }
     },
@@ -45,7 +67,7 @@ export const WDIO_DEFAULTS = {
     exclude: {
         type: (param) => {
             if (!Array.isArray(param)) {
-                throw new Error('the "exclude" options needs to be a list of strings')
+                throw new Error('the "exclude" option needs to be a list of strings')
             }
         }
     },
@@ -252,6 +274,7 @@ export const WDIO_DEFAULTS = {
      * hooks
      */
     onPrepare: HOOK_DEFINITION,
+    onWorkerStart: HOOK_DEFINITION,
     before: HOOK_DEFINITION,
     beforeSession: HOOK_DEFINITION,
     beforeSuite: HOOK_DEFINITION,
@@ -273,9 +296,9 @@ export const WDIO_DEFAULTS = {
     beforeFeature: HOOK_DEFINITION,
     beforeScenario: HOOK_DEFINITION,
     beforeStep: HOOK_DEFINITION,
-    afterFeature: HOOK_DEFINITION,
+    afterStep: HOOK_DEFINITION,
     afterScenario: HOOK_DEFINITION,
-    afterStep: HOOK_DEFINITION
+    afterFeature: HOOK_DEFINITION,
 }
 
 /**
@@ -397,4 +420,19 @@ export const APPIUM_CAPABILITES = [
     'enablePerformanceLogging', 'printPageSourceOnFindFailure',
     ...APPIUM_ANDROID_CAPABILITIES,
     ...APPIUM_IOS_CAPABILITIES
+]
+export const DRIVER_DEFAULT_ENDPOINT = {
+    method: 'GET',
+    host: 'localhost',
+    port: 4444,
+    path: '/status'
+}
+
+export const FF_REMOTE_DEBUG_ARG = '-remote-debugging-port'
+
+export const ERROR_REASON = [
+    'Failed', 'Aborted', 'TimedOut', 'AccessDenied', 'ConnectionClosed',
+    'ConnectionReset', 'ConnectionRefused', 'ConnectionAborted',
+    'ConnectionFailed', 'NameNotResolved', 'InternetDisconnected',
+    'AddressUnreachable', 'BlockedByClient', 'BlockedByResponse'
 ]

@@ -24,7 +24,7 @@ export default class LocalRunner {
         return Object.keys(this.workerPool).length
     }
 
-    run ({ command, argv, ...options }) {
+    run ({ command, args, ...workerOptions }) {
         /**
          * adjust max listeners on stdout/stderr when creating listeners
          */
@@ -34,9 +34,9 @@ export default class LocalRunner {
             process.stderr.setMaxListeners(workerCnt + 2)
         }
 
-        const worker = new WorkerInstance(this.config, options, this.stdout, this.stderr)
-        this.workerPool[options.cid] = worker
-        worker.postMessage(command, argv)
+        const worker = new WorkerInstance(this.config, workerOptions, this.stdout, this.stderr)
+        this.workerPool[workerOptions.cid] = worker
+        worker.postMessage(command, args)
 
         return worker
     }
@@ -69,19 +69,19 @@ export default class LocalRunner {
         }
 
         return new Promise((resolve) => {
+            const timeout = setTimeout(resolve, SHUTDOWN_TIMEOUT)
             const interval = setInterval(() => {
                 const busyWorker = Object.entries(this.workerPool)
                     .filter(([, worker]) => worker.isBusy).length
 
                 log.info(`Waiting for ${busyWorker} to shut down gracefully`)
                 if (busyWorker === 0) {
+                    clearTimeout(timeout)
                     clearInterval(interval)
                     log.info('shutting down')
                     return resolve()
                 }
             }, 250)
-
-            setTimeout(resolve, SHUTDOWN_TIMEOUT)
         })
     }
 }

@@ -1,10 +1,10 @@
 import allure from '@wdio/allure-reporter'
-import { remote, multiremote } from 'webdriverio'
+import { remote, multiremote, MockOverwriteFunction } from 'webdriverio'
 
-// An example of adding command withing ts file to WebdriverIOAsync
+// An example of adding command withing ts file to WebdriverIO (async)
 declare module "webdriverio" {
     interface Browser {
-        browserCustomCommand: (arg) => Promise<void>
+        browserCustomCommand: (arg: unknown) => Promise<void>
     }
 }
 
@@ -15,6 +15,12 @@ async function bar() {
             browserName: 'chrome'
         }
     })
+
+    multiremote({
+        myBrowserInstance: {
+            browserName: 'chrome'
+        }
+    }).then(() => {}, () => {})
 
     // interact with specific instance
     const mrSingleElem = await mr.myBrowserInstance.$('')
@@ -31,6 +37,8 @@ async function bar() {
 
     // remote
     const r = await remote({ capabilities: { browserName: 'chrome' } })
+    remote({ capabilities: { browserName: 'chrome' } }).then(
+        () => {}, () => {})
     const rElem = await r.$('')
     await rElem.click()
 
@@ -38,8 +46,37 @@ async function bar() {
 
     // browser
     await browser.pause(1)
-    const waitUntil: boolean = await browser.waitUntil(() => Promise.resolve(true), 1, '', 1)
+    await browser.newWindow('https://webdriver.io', {
+        windowName: 'some name',
+        windowFeatures: 'some features'
+    })
+    const waitUntil: boolean = await browser.waitUntil(
+        () => Promise.resolve(true),
+        {
+            timeout: 1,
+            timeoutMsg: '',
+            interval: 1
+        }
+    )
     await browser.getCookies()
+    await browser.getCookies('foobar')
+    await browser.getCookies(['foobar'])
+    await browser.setCookies({
+        name: '',
+        value: ''
+    })
+    await browser.setCookies([{
+        name: '',
+        value: '',
+        domain: '',
+        path: '',
+        expiry: 1,
+        sameSite: 'Lax',
+        secure: true,
+        httpOnly: true
+    }])
+    await browser.deleteCookies('foobar')
+    await browser.deleteCookies(['foobar'])
 
     const executeResult = await browser.execute(function (x: number) {
         return x
@@ -51,19 +88,59 @@ async function bar() {
     )
     callResult.toFixed(2)
 
+    // browser element command
+    browser.getElementRect('elementId')
+
+    // protocol command return mapped object value
+    const { x, y, width, height } = await browser.getWindowRect()
+
+    // protocol command return unmapped object
+    const { foo, bar } = await browser.takeHeapSnapshot()
+
+    // browser command return mapped object value
+    const { x: x0, y: y0, width: w, height: h }  =  await browser.getWindowSize()
+
     // browser custom command
     await browser.browserCustomCommand(14)
 
     browser.overwriteCommand('click', function (origCommand) {
-        origCommand()
+        return origCommand()
     })
 
     // $
     const el1 = await $('')
+    const strFunction = (str: string) => str
+    strFunction(el1.selector)
+    strFunction(el1.elementId)
     const el2 = await el1.$('')
     const el3 = await el2.$('')
     await el1.getCSSProperty('style')
     await el2.click()
+    await el1.moveTo({ xOffset: 0, yOffset: 0 })
+    const elementExists: boolean = await el2.waitForExist({
+        timeout: 1,
+        timeoutMsg: '',
+        interval: 1,
+        reverse: true
+    })
+    const elementDisplayed: boolean = await el2.waitForDisplayed({
+        timeout: 1,
+        timeoutMsg: '',
+        interval: 1,
+        reverse: true
+    })
+    const elementEnabled: boolean = await el2.waitForEnabled({
+        timeout: 1,
+        timeoutMsg: '',
+        interval: 1,
+        reverse: true
+    })
+    const elementClickable: boolean = await el2.waitForClickable({
+        timeout: 1,
+        timeoutMsg: '',
+        interval: 1,
+        reverse: true
+    })
     // element custom command
     const el2result = await el3.elementCustomCommand(4)
     el2result.toFixed(2)
@@ -75,6 +152,9 @@ async function bar() {
     await el4.getAttribute('class')
     await el5.scrollIntoView(false)
 
+    const selector$$: string | Function = elems.selector
+    const parent$$: WebdriverIO.Element | WebdriverIO.BrowserObject = elems.parent
+
     // shadow$ shadow$$
     const el6 = await $('')
     const shadowElem = await el6.shadow$('')
@@ -84,16 +164,91 @@ async function bar() {
 
     // react$ react$$
     const reactWrapper = await browser.react$('')
+    const reactWrapperWithOptions = await browser.react$('', {
+        props: {},
+        state: true
+    })
     const reactElement = await reactWrapper.react$('')
+    const reactElementWithOptions = await reactWrapper.react$('', {
+        props: {},
+        state: true
+    })
     await reactElement.click()
     const reactElements = await reactWrapper.react$$('')
+    const reactElementsWithOptions = await reactWrapper.react$$('', {
+        props: {},
+        state: true
+    })
     await reactElements[0].click()
-}
 
-// selenium-standalone-service
-const config: WebdriverIOAsync.Config = {
-    skipSeleniumInstall: true,
-    seleniumLogs: ''
+    // touchAction
+    const ele = await $('')
+    const touchAction: WebdriverIO.TouchAction = {
+        action: "longPress",
+        element: await $(''),
+        ms: 0,
+        x: 0,
+        y: 0
+    }
+    await ele.touchAction(touchAction)
+    await browser.touchAction(touchAction)
+
+    // dragAndDrop
+    await ele.dragAndDrop(ele, { duration: 0 })
+    await ele.dragAndDrop({ x: 1, y: 2 })
+
+    // addLocatorStrategy
+    browser.addLocatorStrategy('myStrat', () => {})
+
+    // test access to base client properties
+    browser.sessionId
+    browser.capabilities.browserName
+    browser.requestedCapabilities.browserName
+    browser.isMobile
+    browser.isAndroid
+    browser.isIOS
+
+    // network mocking
+    browser.throttle('Regular2G')
+    browser.throttle({
+        offline: false,
+        downloadThroughput: 50 * 1024 / 8,
+        uploadThroughput: 20 * 1024 / 8,
+        latency: 500
+    })
+    browser.mock('**/image.jpg')
+    const mock = await browser.mock('**/image.jpg', {
+        method: 'get',
+        headers: { foo: 'bar' }
+    })
+    mock.abort('Aborted')
+    mock.abortOnce('AccessDenied')
+    mock.clear()
+    mock.respond('/other/resource.jpg')
+    mock.respond('/other/resource.jpg', {
+        statusCode: 100,
+        headers: { foo: 'bar' }
+    })
+    const res: MockOverwriteFunction = async function (req, client) {
+        const url:string = req.url
+        await client.send('foo', { bar: 1 })
+        return url
+    }
+    mock.respond(res)
+    mock.respond(async (req, client) => {
+        const url:string = req.url
+        await client.send('foo', { bar: 1 })
+        return true
+    })
+    mock.respondOnce('/other/resource.jpg')
+    mock.respondOnce('/other/resource.jpg', {
+        statusCode: 100,
+        headers: { foo: 'bar' }
+    })
+    mock.restore()
+    const match = mock.calls[0]
+    match.body
+    match.headers
 }
 
 // allure-reporter

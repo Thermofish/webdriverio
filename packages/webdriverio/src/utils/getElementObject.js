@@ -1,6 +1,5 @@
-import { webdriverMonad } from 'webdriver'
-import { wrapCommand, runFnInFiberContext } from '@wdio/config'
-import merge from 'lodash.merge'
+import { webdriverMonad, wrapCommand, runFnInFiberContext } from '@wdio/utils'
+import clone from 'lodash.clonedeep'
 
 import { getBrowserObject, getPrototype as getWDIOPrototype, getElementFromResponse } from '../utils'
 import { elementErrorHandler } from '../middlewares'
@@ -12,9 +11,13 @@ import { ELEMENT_KEY } from '../constants'
  * @param  {Object} res       findElement response
  * @return {Object}           WDIO element object
  */
-export const getElement = function findElement (selector, res) {
+export const getElement = function findElement (selector, res, isReactElement = false) {
     const browser = getBrowserObject(this)
-    const prototype = merge({}, browser.__propertiesObject__, getWDIOPrototype('element'), { scope: 'element' })
+    const propertiesObject = {
+        ...clone(browser.__propertiesObject__),
+        ...getWDIOPrototype('element'),
+        scope: 'element'
+    }
 
     const element = webdriverMonad(this.options, (client) => {
         const elementId = getElementFromResponse(res)
@@ -40,8 +43,10 @@ export const getElement = function findElement (selector, res) {
         client.selector = selector
         client.parent = this
         client.emit = ::this.emit
+        client.isReactElement = isReactElement
+
         return client
-    }, prototype)
+    }, propertiesObject)
 
     const elementInstance = element(this.sessionId, elementErrorHandler(wrapCommand))
 
@@ -50,6 +55,7 @@ export const getElement = function findElement (selector, res) {
         browser.__propertiesObject__[name] = { value: fn }
         origAddCommand(name, runFnInFiberContext(fn))
     }
+
     return elementInstance
 }
 
@@ -59,11 +65,15 @@ export const getElement = function findElement (selector, res) {
  * @param  {Object} res       findElement response
  * @return {Object}           WDIO element object
  */
-export const getElements = function getElements (selector, res) {
+export const getElements = function getElements (selector, elemResponse, isReactElement = false) {
     const browser = getBrowserObject(this)
-    const prototype = merge({}, browser.__propertiesObject__, getWDIOPrototype('element'), { scope: 'element' })
+    const propertiesObject = {
+        ...clone(browser.__propertiesObject__),
+        ...getWDIOPrototype('element'),
+        scope: 'element'
+    }
 
-    const elements = res.map((res, i) => {
+    const elements = elemResponse.map((res, i) => {
         const element = webdriverMonad(this.options, (client) => {
             const elementId = getElementFromResponse(res)
 
@@ -89,8 +99,10 @@ export const getElements = function getElements (selector, res) {
             client.parent = this
             client.index = i
             client.emit = ::this.emit
+            client.isReactElement = isReactElement
+
             return client
-        }, prototype)
+        }, propertiesObject)
 
         const elementInstance = element(this.sessionId, elementErrorHandler(wrapCommand))
 

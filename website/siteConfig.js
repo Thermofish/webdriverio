@@ -3,14 +3,16 @@ const repoUrl = 'https://github.com/webdriverio/webdriverio'
 module.exports = {
     title: 'WebdriverIO',
     projectName: 'webdriver.io',
-    tagline: 'Next-gen WebDriver test framework for Node.js',
+    tagline: 'Next-gen browser and mobile automation test framework for Node.js',
     url: 'https://webdriver.io',
     baseUrl: '/',
     headerLinks: [
-        { doc: 'gettingstarted', label: 'Guide' },
+        { doc: 'gettingstarted', label: 'Docs' },
         { doc: 'api', label: 'API' },
         { page: 'help', label: 'Help' },
+        { doc: 'versions', label: 'Versions' },
         { blog: true, label: 'Blog' },
+        { page: 'docs/contribute', label: 'Contribute' },
         { languages: true },
         { search: true },
         { href: repoUrl, label: 'GitHub' }
@@ -26,7 +28,7 @@ module.exports = {
     },
 
     // This copyright info is used in /core/Footer.js and blog rss/atom feeds.
-    copyright: 'Copyright © ' + new Date().getFullYear() + ' JS.Foundation',
+    copyright: 'Copyright © ' + new Date().getFullYear() + ' OpenJS Foundation',
 
     highlight: {
         // Highlight.js theme to use for syntax highlighting in code blocks
@@ -59,7 +61,9 @@ module.exports = {
     scrollToTop: true,
 
     /* Show last update time */
-    enableUpdateTime: true
+    enableUpdateTime: true,
+
+    blogSidebarCount: 25
 
     // You may provide arbitrary config keys to be used as needed by your
     // template. For example, if you need your repo's URL...

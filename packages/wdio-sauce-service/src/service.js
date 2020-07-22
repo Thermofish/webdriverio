@@ -1,16 +1,16 @@
 import SauceLabs from 'saucelabs'
 import logger from '@wdio/logger'
+import { isUnifiedPlatform } from './utils'
 
 const jobDataProperties = ['name', 'tags', 'public', 'build', 'custom-data']
-
-const jasmineTopLevelSuite = 'Jasmine__TopLevel__Suite'
 
 const log = logger('@wdio/sauce-service')
 
 export default class SauceService {
-    constructor () {
+    constructor (options) {
         this.testCnt = 0
         this.failures = 0 // counts failures between reloads
+        this.options = options || {}
     }
 
     /**
@@ -36,19 +36,25 @@ export default class SauceService {
             this.isServiceEnabled = false
             config.key = 'unknown_key'
         }
+    }
 
-        this.config.user = config.user
-        this.config.key = config.key
-        this.sauceUser = this.config.user
-        this.sauceKey = this.config.key
+    before() {
+        this.isUP = isUnifiedPlatform(global.browser.capabilities)
     }
 
     beforeSuite (suite) {
         this.suiteTitle = suite.title
+        if (this.options.setJobNameInBeforeSuite && !this.isUP) {
+            global.browser.execute('sauce:job-name=' + this.suiteTitle)
+        }
     }
 
     beforeTest (test) {
-        if (!this.isServiceEnabled || this.isRDC) {
+        /**
+         * Date:    20200714
+         * Remark:  Sauce Unified Platform doesn't support updating the context yet.
+         */
+        if (!this.isServiceEnabled || this.isRDC || this.isUP) {
             return
         }
 
@@ -62,58 +68,64 @@ export default class SauceService {
             this.suiteTitle = test.fullName.slice(0, test.fullName.indexOf(test.title) - 1)
         }
 
-        const context = test.parent === jasmineTopLevelSuite ? test.fullName : test.parent + ' - ' + test.title
-
-        global.browser.execute('sauce:context=' + context)
+        const fullTitle = (
+            /**
+             * Jasmine
+             */
+            test.fullName ||
+            /**
+             * Mocha
+             */
+            `${test.parent} - ${test.title}`
+        )
+        global.browser.execute('sauce:context=' + fullTitle)
     }
 
     afterSuite (suite) {
-        if (suite.hasOwnProperty('error')) {
+        if (Object.prototype.hasOwnProperty.call(suite, 'error')) {
             ++this.failures
         }
     }
 
-    afterTest (test) {
-        if (!test.passed) {
+    afterTest (test, context, results) {
+        if (!results.passed) {
             ++this.failures
         }
     }
 
-    beforeFeature (feature) {
-        if (!this.isServiceEnabled || this.isRDC) {
+    /**
+     * For CucumberJS
+     */
+    beforeFeature (uri, feature) {
+        /**
+         * Date:    20200714
+         * Remark:  Sauce Unified Platform doesn't support updating the context yet.
+         */
+        if (!this.isServiceEnabled || this.isRDC || this.isUP) {
             return
         }
 
-        this.suiteTitle = feature.name || feature.getName()
+        this.suiteTitle = feature.document.feature.name
         global.browser.execute('sauce:context=Feature: ' + this.suiteTitle)
     }
 
-    afterStep (feature) {
-        if (
-            /**
-             * Cucumber v1
-             */
-            feature.failureException ||
-            /**
-             * Cucumber v2
-             */
-            (typeof feature.getFailureException === 'function' && feature.getFailureException()) ||
-            /**
-             * Cucumber v3, v4
-             */
-            (feature.status === 'failed')
-        ) {
-            ++this.failures
-        }
-    }
-
-    beforeScenario (scenario) {
-        if (!this.isServiceEnabled || this.isRDC) {
+    beforeScenario (uri, feature, scenario) {
+        /**
+         * Date:    20200714
+         * Remark:  Sauce Unified Platform doesn't support updating the context yet.
+         */
+        if (!this.isServiceEnabled || this.isRDC || this.isUP) {
             return
         }
 
-        const scenarioName = scenario.name || scenario.getName()
+        const scenarioName = scenario.name
         global.browser.execute('sauce:context=Scenario: ' + scenarioName)
+    }
+
+    afterScenario(uri, feature, pickle, result) {
+        if (result.status === 'failed') {
+            ++this.failures
+        }
     }
 
     /**
@@ -135,15 +147,14 @@ export default class SauceService {
         }
 
         const status = 'status: ' + (failures > 0 ? 'failing' : 'passing')
-
         if (!global.browser.isMultiremote) {
             log.info(`Update job with sessionId ${global.browser.sessionId}, ${status}`)
-            return this.updateJob(global.browser.sessionId, failures)
+            return this.isUP ? this.updateUP(failures) : this.updateJob(global.browser.sessionId, failures)
         }
 
         return Promise.all(Object.keys(this.capabilities).map((browserName) => {
             log.info(`Update multiremote job for browser "${browserName}" and sessionId ${global.browser[browserName].sessionId}, ${status}`)
-            return this.updateJob(global.browser[browserName].sessionId, failures, false, browserName)
+            return this.isUP ? this.updateUP(failures) : this.updateJob(global.browser[browserName].sessionId, failures, false, browserName)
         }))
     }
 
@@ -173,7 +184,7 @@ export default class SauceService {
         }
 
         const body = this.getBody(failures, calledOnReload, browserName)
-        await this.api.updateJob(this.sauceUser, sessionId, body)
+        await this.api.updateJob(this.config.user, sessionId, body)
         this.failures = 0
     }
 
@@ -205,15 +216,26 @@ export default class SauceService {
             body.name += ` (${testCnt})`
         }
 
+        let caps = this.capabilities['sauce:options'] || this.capabilities
+
         for (let prop of jobDataProperties) {
-            if (!this.capabilities[prop]) {
+            if (!caps[prop]) {
                 continue
             }
 
-            body[prop] = this.capabilities[prop]
+            body[prop] = caps[prop]
         }
 
         body.passed = failures === 0
         return body
+    }
+
+    /**
+     * Update the UP with the JS-executor
+     * @param {number} failures
+     * @returns {*}
+     */
+    updateUP(failures){
+        return global.browser.execute(`sauce:job-result=${failures === 0}`)
     }
 }

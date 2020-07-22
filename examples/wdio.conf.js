@@ -13,7 +13,9 @@ exports.config = {
     //
     hostname: 'localhost',
     port: 4444,
-    path: '/wd/hub',
+    path: '/',
+    // Protocol: http | https
+    // protocol: 'http',
     //
     // =================
     // Service Providers
@@ -25,7 +27,7 @@ exports.config = {
     user: 'webdriverio',
     key:  'xxxxxxxxxxxxxxxx-xxxxxx-xxxxx-xxxxxxxxx',
     //
-    // If you run your tests on SauceLabs you can specify the region you want to run your tests
+    // If you run your tests on Sauce Labs you can specify the region you want to run your tests
     // in via the `region` property. Available short handles for regions are:
     // us: us-west-1 (default)
     // eu: eu-central-1
@@ -62,8 +64,6 @@ exports.config = {
     // files and you set maxInstances to 10; all spec files will get tested at the same time
     // and 30 processes will get spawned. The property handles how many capabilities
     // from the same test should run tests.
-    //
-    //
     maxInstances: 10,
     //
     // If you have trouble getting all important capabilities together, check out the
@@ -81,11 +81,6 @@ exports.config = {
         specs: [
             'test/ffOnly/*'
         ]
-    }, {
-        browserName: 'phantomjs',
-        exclude: [
-            'test/spec/alert.js'
-        ]
     }],
     //
     //
@@ -95,19 +90,11 @@ exports.config = {
     // ===================
     // Define all options that are relevant for the WebdriverIO instance here
     //
-    // By default WebdriverIO commands are executed in a synchronous way using
-    // the wdio-sync package. If you still want to run your tests in an async way
-    // e.g. using promises you can set the sync option to false.
-    sync: true,
-    //
     // Level of logging verbosity: trace | debug | info | warn | error | silent
     logLevel: 'info',
     //
     // Set directory to store all logs into
     outputDir: __dirname,
-    //
-    // Enables colors for log output.
-    coloredLogs: true,
     //
     // Set a base URL in order to shorten url command calls. If your `url` parameter starts
     // with `/`, the base url gets prepended, not including the path portion of your baseUrl.
@@ -132,6 +119,9 @@ exports.config = {
     //
     // The number of times to retry the entire specfile when it fails as a whole
     specFileRetries: 1,
+    //
+    // Retried specfiles are inserted at the beginning of the queue and retried immediately
+    specFileRetriesDeferred: false,
     //
     // Test reporter for stdout.
     // The only one supported by default is 'dot'
@@ -176,17 +166,16 @@ exports.config = {
     cucumberOpts: {
         require: [],        // <string[]> (file/dir) require files before executing features
         backtrace: false,   // <boolean> show full backtrace for errors
-        compiler: [],       // <string[]> ("extension:module") require files with the given EXTENSION after requiring MODULE (repeatable)
+        requireModule: [],  // <string[]> ("module") require MODULE files (repeatable)
         dryRun: false,      // <boolean> invoke formatters without executing steps
         failFast: false,    // <boolean> abort the run on first failure
         format: ['pretty'], // <string[]> (type[:path]) specify the output format, optionally supply PATH to redirect formatter output (repeatable)
-        colors: true,       // <boolean> disable colors in formatter output
         snippets: true,     // <boolean> hide step definition snippets for pending steps
         source: true,       // <boolean> hide source uris
         profile: [],        // <string[]> (name) specify the profile to use
         strict: false,      // <boolean> fail if there are any undefined or pending steps
         tags: [],           // <string[]> (expression) only execute the features or scenarios with tags matching the expression
-        timeout: 20000,      // <number> timeout for step definitions
+        timeout: 20000,     // <number> timeout for step definitions
         ignoreUndefinedDefinitions: false, // <boolean> Enable this config to treat undefined definitions as warnings.
     },
     //
@@ -204,6 +193,17 @@ exports.config = {
      * @param {Array.<Object>} capabilities list of capabilities details
      */
     onPrepare: function (config, capabilities) {
+    },
+    /**
+     * Gets executed before a worker process is spawned and can be used to initialise specific service
+     * for that worker as well as modify runtime environments in an async fashion.
+     * @param  {String} cid      capability id (e.g 0-0)
+     * @param  {[type]} caps     object containing capabilities for session that will be spawn in the worker
+     * @param  {[type]} specs    specs to be run in the worker process
+     * @param  {[type]} args     object that will be merged with the main configuration once worker is initialised
+     * @param  {[type]} execArgv list of string arguments passed to the worker process
+     */
+    onWorkerStart: function (cid, caps, specs, args, execArgv) {
     },
     /**
      * Gets executed just before initialising the webdriver session and test framework. It allows you
@@ -231,31 +231,32 @@ exports.config = {
     /**
      * Hook that gets executed _before_ a hook within the suite starts (e.g. runs before calling
      * beforeEach in Mocha)
+     * stepData and world are Cucumber framework specific
      */
-    beforeHook: function () {
+    beforeHook: function (test, context/*, stepData, world*/) {
     },
     /**
      * Hook that gets executed _after_ a hook within the suite ends (e.g. runs after calling
      * afterEach in Mocha)
+     * stepData and world are Cucumber framework specific
      */
-    afterHook: function () {
+    afterHook: function (test, context, { error, result, duration, passed, retries }/*, stepData, world*/) {
     },
     /**
-     * Function to be executed before a test (in Mocha/Jasmine) or a step (in Cucumber) starts.
-     * @param {Object} test test details
+     * Function to be executed before a test (in Mocha/Jasmine) starts.
      */
-    beforeTest: function (test) {
+    beforeTest: function (test, context) {
     },
     //
     /**
      * Runs before a WebdriverIO command gets executed.
-     * @param {String} commandName hook command name
+     * @param {String} commandName command name
      * @param {Array} args arguments that command would receive
      */
     beforeCommand: function (commandName, args) {
     },
     /**
-     * Runs after a WebdriverIO command gets executed
+     * Runs after a WebdriverIO command gets executed.
      * @param {String} commandName hook command name
      * @param {Array} args arguments that command would receive
      * @param {Number} result 0 - command success, 1 - command error
@@ -264,10 +265,9 @@ exports.config = {
     afterCommand: function (commandName, args, result, error) {
     },
     /**
-     * Function to be executed after a test (in Mocha/Jasmine) or a step (in Cucumber) ends.
-     * @param {Object} test test details
+     * Function to be executed after a test (in Mocha/Jasmine) ends.
      */
-    afterTest: function (test) {
+    afterTest: function (test, context, { error, result, duration, passed, retries }) {
     },
     /**
      * Hook that gets executed after the suite has ended
@@ -311,16 +311,16 @@ exports.config = {
     },
     //
     // Cucumber specific hooks
-    beforeFeature: function (feature) {
+    beforeFeature: function (uri, feature, scenarios) {
     },
-    beforeScenario: function (scenario) {
+    beforeScenario: function (uri, feature, scenario, sourceLocation) {
     },
-    beforeStep: function (step) {
+    beforeStep: function ({ uri, feature, step }, context) {
     },
-    afterStep: function (stepResult) {
+    afterStep: function ({ uri, feature, step }, context, { error, result, duration, passed, retries }) {
     },
-    afterScenario: function (scenario) {
+    afterScenario: function (uri, feature, scenario, result, sourceLocation) {
     },
-    afterFeature: function (feature) {
+    afterFeature: function (uri, feature, scenarios) {
     }
 }

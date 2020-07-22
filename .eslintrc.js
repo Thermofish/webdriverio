@@ -30,6 +30,7 @@ module.exports = {
     camelcase: ['error', { properties: 'never' }],
     'comma-spacing': ['error', { before: false, after: true }],
     'no-lonely-if': 'error',
+    'no-else-return': 'error',
     'no-tabs': 'error',
     'no-trailing-spaces': ['error', {
       skipBlankLines: false,
@@ -37,6 +38,7 @@ module.exports = {
     }],
     quotes: ['error', 'single', { avoidEscape: true }],
     'unicode-bom': ['error', 'never'],
-    'object-curly-spacing': ['error', 'always']
+    'object-curly-spacing': ['error', 'always'],
+    'require-atomic-updates': 0
   }
 }

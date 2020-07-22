@@ -1,11 +1,11 @@
-
-import request from 'request'
+import fs from 'fs'
+import got from 'got'
 import { remote } from '../../../src'
 import * as utils from '../../../src/utils'
 
+jest.mock('fs')
+
 describe('saveScreenshot', () => {
-    jest.mock('fs')
-    const fs = require('fs').default
     let browser, getAbsoluteFilepathSpy, assertDirectoryExistsSpy, writeFileSyncSpy
 
     beforeEach(async () => {
@@ -38,8 +38,9 @@ describe('saveScreenshot', () => {
         expect(assertDirectoryExistsSpy).toHaveBeenCalledWith(getAbsoluteFilepathSpy.mock.results[0].value)
 
         // request
-        expect(request.mock.calls[1][0].method).toBe('GET')
-        expect(request.mock.calls[1][0].uri.pathname).toBe('/wd/hub/session/foobar-123/screenshot')
+        expect(got.mock.calls[1][1].method).toBe('GET')
+        expect(got.mock.calls[1][1].uri.pathname)
+            .toBe('/session/foobar-123/screenshot')
         expect(screenshot.toString()).toBe('some screenshot')
 
         // write to file
